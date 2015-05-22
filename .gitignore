@@ -1,0 +1,8 @@
+*.py[cod]
+.project
+.pydevproject
+*.bak
+*.egg
+*.egg-info
+*.dist-info
+old

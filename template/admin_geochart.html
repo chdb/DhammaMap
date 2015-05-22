@@ -1,0 +1,56 @@
+{% extends 'admin_base.html' %}
+
+{% block header_title %}
+  {% trans %}Users Geolocation{% endtrans %}
+{% endblock %}
+
+{% block content %}
+    <div id="chart_div" style="width: 100%; height: 500px;"></div>
+{% endblock %}
+
+{% block mediaCSS %}
+<style>
+	path {	stroke-width:1; /* country borders width */
+			/*stroke:#ffffff;  color for the border */
+		 }
+	 path:not([fill="#f5f5f5"]):hover 
+		{ fill:red;
+		}
+</style>
+{% endblock %}
+
+ 
+{% block mediaJS %}
+    <script src='https://www.google.com/jsapi'></script>
+    <script>
+        google.load('visualization', '1', {'packages': ['geochart']});
+        google.setOnLoadCallback(drawRegionsMap);
+        function drawRegionsMap() 
+		{   var data = google.visualization.arrayToDataTable (
+					[ ['Country', 'Registrations']
+						{% for country, registrations in data %}
+					, ['{{ country }}', {{ registrations }}]
+						{% endfor %}
+					]
+				);
+            var options = 	{ 'backgroundColor': { 'fill'		: '#000099'
+												 , 'stroke'		: '#004020'
+												 , 'strokeWidth': 50
+												 }		
+							, 'datalessRegionColor'				: '#8C0069'
+							, 'colorAxis'	   : { 'minValue'	: 0
+												 , 'colors'  	: [ '#00D9A3'
+																  , '#008C00'
+																  ]
+												 }
+							, 'legend'		   : { 'textStyle'	: { 'color'		: 'blue'
+																  , 'fontSize'	: 16
+																  }
+												 }/* */
+							};
+            var chart = new google.visualization.GeoChart(document.getElementById('chart_div'));
+            chart.draw(data, options);
+        }
+    </script>
+ {% endblock %}
+ 

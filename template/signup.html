@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Register a new user{% endblock %}
+
+{% block maincontent %}
+<div id="form">
+    <h1>Register a new user!
+    </h1>
+    <form action="/s/signup" method="POST">
+        {{ m.input_csrf() }}
+        {% include "input email.html" %}
+        <br>
+        <br>
+        <input type="submit" value="Create user" >
+    </form>
+</div>
+{% endblock %}
+
+{% block mediaJS %}
+{% endblock %}    

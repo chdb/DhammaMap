@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block maincontent %}
+
+<form action="/admin/newkeys" method="post">
+    {{ m.input_csrf() }}
+	<button>New Keys</button>
+</form>
+
+
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block mediaCSS %}
+selector {	cursor: url(myimage.jpg), auto;
+		 }
+{% endblock %}
+
+{% block maincontent %}
+	<h1>Recover Password</h1>
+	<p>Forgot your password? Click the link below to receive a link to reset your password.</p>
+
+	<form class="form" action= "/forgot" method="POST">
+		{{ m.input_csrf() }}
+		<label for="email">email address</label>
+		<input type="text" name="email" >
+		<br>
+		<!-- additional inputs for security questions like mothers maiden name -->
+		<input type="submit" value="Send password reset link">
+	</form>
+{% endblock %}

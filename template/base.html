@@ -1,0 +1,53 @@
+{% import "macros.html" as m %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">        
+		<title>{% block title %}User accounts demo{% endblock %}</title>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+		<script src="../static/jquery-blockUI.js"></script>
+        <style>
+			input 	{ display : block; 	}
+			#flashes{ border  : 1px solid transparent; } /* stops jerks in $.slideUp() and $.slideDown() */
+			{% block mediaCSS %}
+			{% endblock %}
+        </style>
+
+    </head>
+    <body>
+        <div id="flashes">
+			{{ fmsgs }}
+        </div>
+        <div class="content">
+            {% block maincontent %}
+            {% endblock %}
+        </div>
+        <div>
+            <footer>
+                <hr>                
+				<p>
+				{% if user %}
+					Logged in as: <span style="background-color: OldLace">{{ user.forename }} {{ user.lastname }}</span>
+					| <a href="/logout">Logout</a>
+				{% else %}
+					Not logged in yet: <a href="/a/login">Login or Forgot Password)</a>
+				{% endif %}
+                    | <a href="/">Home</a>
+                    | <a href="/a/signup">New user</a>
+                    | <a href="/secure{{ token }}">Secured page</a> (you can see this after login)
+                 </p>
+                <p>
+                    Got questions? <a href="http://blog.abahgat.com/about">Get in touch</a>.
+                    <small> And if you want to <strong>donate</strong> a little something, 
+						<a href="http://abahgat.github.io/webapp2-user-accounts#donate">here</a> a few options.
+                    </small>
+                </p>
+            </footer>
+        </div>
+ 		<script src="../static/dhammamap.js"></script>
+		<script>
+		{% block mediaJS %}
+		{% endblock %}    
+		</script>
+	</body>
+</html>
