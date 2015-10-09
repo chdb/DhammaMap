@@ -51,7 +51,7 @@ def utf8 (u):
         # return isinstance(inst, _s._decorated)
 
 def timeStampNow():
-    return int(time.time())
+    return int(time.time()) # seconds since the epoch.  time() returns float with system-dependent resolution - some only resolve to nearest second
 
 def validTimeStamp (timeStamp, maxAge):
     assert type (timeStamp) is int
@@ -60,14 +60,14 @@ def validTimeStamp (timeStamp, maxAge):
         return True
     return timeStampNow() - timeStamp <= maxAge
 
-    
+
 # def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare_digest
     # r = _sameStr (a, b)
     # if not r and devServer():
         # import inspect
         # l = inspect.getargspec(sameStr)[0]
-        # logging.warning('inspect XXXXXXXXXXXXXXXXXXXXXXXXX: %s ', repr(l)) 
-        # logging.warning('inspect XXXXXXXXXXXXXXXXXXXXXXXXX: %s ', repr(inspect.getargspec(sameStr)[1])) 
+        # logging.debug('inspect XXXXXXXXXXXXXXXXXXXXXXXXX: %s ', repr(l)) 
+        # logging.debug('inspect XXXXXXXXXXXXXXXXXXXXXXXXX: %s ', repr(inspect.getargspec(sameStr)[1])) 
     # return r
 
 def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare_digest
@@ -88,16 +88,16 @@ def newToken():
     return base64.b64encode(r) # 15/3*4 == 20 bytes
     
 def newSignupToken ():
-    return 's' + newToken()
+    return 'signUp' + newToken()
     
 def newPasswordToken ():
-    return 'p' + newToken()
+    return 'pw1' + newToken()
 
-def newForgotToken ():
-    return 'f' + newToken()
+# def newForgotToken ():
+    # return 'f' + newToken()
     
 def newSessionToken ():
-    return 'x' + newToken()
+    return 'auth' + newToken()
     
 def passwordHString (praw):
     return security.generate_password_hash( praw

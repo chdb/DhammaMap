@@ -30,12 +30,12 @@
 					Logged in as: <span style="background-color: OldLace">{{ user.forename }} {{ user.lastname }}</span>
 					| <a href="/logout">Logout</a>
 				{% else %}
-					Not logged in yet: <a href="/a/login">Login or Forgot Password)</a>
+					Not logged in yet: <a href="/login">Login or Forgot Password)</a>
 				{% endif %}
                     | <a href="/">Home</a>
-                    | <a href="/a/signup">New user</a>
+                    | <a href="/signup">New user</a>
                     | <a href="/secure{{ token }}">Secured page</a> (you can see this after login)
-                 </p>
+                </p>
             </footer>
         </div>
  		<script src="../static/dhammamap.js"></script>

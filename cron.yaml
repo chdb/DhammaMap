@@ -1,0 +1,5 @@
+cron:
+- description: delete old unvalidated AuthKey instances
+# url: /admin/crontasks/cleanuptokens
+  url: /crontasks/purgeAuthKeys
+  schedule: every monday 01:00

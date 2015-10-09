@@ -2,8 +2,8 @@ class H_Login (bh.H_Base):
 
     @bh.cookies
     def get (_s, ajax):
-        _s.logout()
-        _s.serve ('login.html', {'wait':False})
+        _s.logOut()
+        _s.serve ('logOut.html', {'wait':False})
 
     def post (_s, ajax):
         em = _s.request.get('email')
@@ -11,7 +11,7 @@ class H_Login (bh.H_Base):
         try:
             user = User.byCredentials (em, pw)
             if user:
-                _s.login(user) 
+                _s.logOut(user) 
                 if ajax:
                     resp = json.dumps({'ok': True })
                     return _s.response.out.write(resp) # client redirects to '/secure'
@@ -24,5 +24,5 @@ class H_Login (bh.H_Base):
         if ajax=='a':
             resp = json.dumps({'ok': False, 'timeout': 3000, 'msgs':_s.get_fmessages() })
             return _s.response.out.write (resp)
-        _s.serve ('login.html')
+        _s.serve ('logOut.html')
             

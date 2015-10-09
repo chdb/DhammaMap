@@ -1,54 +1,76 @@
 ;(function() {
 /*jshint laxcomma:true */
 "use strict";
-
-var $form = $('#form form');
-if ($form.length>0) // if  $('#form form') element exists, IE there's a <form> element in the DOM with a parent with id='form'
-{
-	var $flashes = $('#flashes');
-	var $formdiv = $('#form');		// put "form" as the id on the div that will be blocked, and which contains the form.
-	var beforeFn = function() 
-	{ 	$flashes.slideUp (1000, function() {$flashes.empty();});  
-	};
-	var successFn = function (resp)
-	{	if (resp.ok) 
-		{	if (url in resp)
-				window.location = resp.url; 
-		}
-		else 
-		{	$formdiv.block ({ message  : '<img src="../static/snakes-chasing.gif">' 
-							, css	   : { width :'10%'				/*
-										 , border:'3px solid #FFFFFF'
-										 , cursor:'wait'
-										 , backgroundColor: '#FFFFFF'
-										 }						
-							, overlayCSS:{ backgroundColor: '#FFFFFF'
-										 , opacity		  : 0.0
-										 , cursor		  : 'wait'*/ 
-										 }  						
-							}); 
-			setTimeout	( function() {  $formdiv.unblock();
-										$flashes.append (resp.msgs);
-										$flashes.slideDown (1000);
-									 }
-						, resp.timeout
-						);
-		}
-	};
-	
-	$(document).ready( function() 
-		{	$form.submit( function(ev) 
-			{	ev.preventDefault();
-				$.ajax( { type		: "POST"
-						, url 		: $form.attr('action').replace('/s/','/a/')
-						, data		: $(this).serialize()
-						, dataType	: 'json'
-						, beforeSend: beforeFn
-						, success	: successFn
-						} );
+	var $form = $('#form form');
+	if ($form.length>0) // if  $('#form form') element exists, IE there's a <form> element in the DOM with a parent with id='form'
+	{	
+		var xhr;
+		var $flashes = $('#flashes');
+		var $formdiv = $('#form');		// put "form" as the id on the div that will be blocked, and which contains the form.
+		var beforeFn = function() 
+			{ //console.log('before');
+				//$flashes.empty();
+				$flashes.slideUp (500);  
+			};
+		var showMsgs = function (resp)
+			{ $formdiv.unblock();
+				//$flashes.empty();
+				if (resp.msgs)
+				{ $flashes.html (resp.msgs);
+					//console.log('flashes: ' + $flashes.html());
+					$flashes.slideDown (500);
+				}
+			}
+		var wait = function (resp)
+			{	$formdiv.block ({ message: '<img src="../static/snakes-chasing.gif">' 
+												, css	   : { width :'10%'				/*
+																	 , border:'3px solid #FFFFFF'
+																	 , cursor:'wait'
+																	 , backgroundColor: '#FFFFFF'
+																	 }						
+												, overlayCSS:{ backgroundColor: '#FFFFFF'
+																		 , opacity		  : 0.0
+																		 , cursor		  : 'wait'*/ 
+																		 }  						
+												}); 
+				setTimeout	( function(){ showMsgs(resp); }
+										, resp.delay
+										);
+			  //window.console.log('done waiting');
+			};
+		var successFn = function (resp)
+			{	//console.log('delay= ' + resp.delay)
+				switch (resp.mode)
+				{	case 'ok' 	:		if (url in resp)
+														window.location = resp.url;
+						break;
+					case 'wait' :		wait(resp);
+						break;
+					case 'abort':		//console.log('aborting');
+													//console.log(resp.msgs)
+													showMsgs(resp);
+													//alert(resp.msgs);
+													setTimeout	( function(){ xhr.abort(); console.log('aborted');}
+																			, resp.delay
+																			);
+				}			 
+			};
+		
+		$(document).ready( function() 
+			{	//window.console.log('loaded');
+				$form.submit( function(ev) // make an ajax call instead of the default submit action 
+					{	//console.log('submit');
+						ev.preventDefault();	
+						xhr = $.ajax( { type		: "POST"
+													, url 		: $form.attr('action') + '/ajax' //url = remove '_no_js' from end of action's value
+													, data		: $(this).serialize() //encode all the inputs from the form
+													, dataType: 'json'
+													, beforeSend: beforeFn
+													, success	: successFn
+													} );
+					});
 			});
-		});
-};	
+	}
 })();
 
 //

@@ -126,7 +126,7 @@ def set_locale(rh, tag=None):
         
     def getLocale(rh, tag):
         """ Retrieve the locale tag from a prioritized list of sources
-        NB We cannot return None because there has to be a locale - the app has to be some language or other.
+        NB We cannot return None because there has to be a locale - clearly UI text has to be in some language or other.
         """
         localeTags = rh.app.config.get('locales')
         if localeTags: 

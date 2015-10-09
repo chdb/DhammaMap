@@ -31,7 +31,10 @@ handlers:
 libraries:
 - name: webapp2
   version: "latest" #"2.5.2"
-  
+
+- name: webob
+  version: latest  
+
 - name: pycrypto
   version: "latest" #"2.6"
   

@@ -35,18 +35,18 @@ eg below for
 '''
 from jinja_boot import set_autoescape
 
-config = \
-    { 'pepper'            : None
-    , 'maxAgeRecentLogin' : 60*10  
-    , 'maxIdleAnon'       : 60*10  # 10 minutes 
-    , 'maxIdleAuth'       : 60*10  # 10 minutes 
-    , 'maxAgeSUTok'       : 60*10  # 10 minutes 
-    , 'maxAgePW1Tok'      : 60*10  # 10 minutes 
-    , 'maxAgePW2Tok'      : 60*10  # 10 minutes 
-                                
-    , 'log_email'       : True
-    , 'email_developers': True
-    , 'developers'      : ( ('Santa Klauss', 'snowypal@northpole.com') )
+                          # seconds
+cfg={ 'maxAgeRecentLogin' : 60*10  
+    , 'maxAgeSignUpTok'   : 60*60*24
+    , 'maxAgePasswordTok' : 60*60  
+    , 'maxAgePassword2Tok': 60*60  
+    
+    , 'loginDelay'        : 5
+    , 'pepper'            : None
+    , 'HighSecurity'      : False
+    , 'log_email'         : True
+    , 'email_developers'  : True
+    , 'developers'        : (('Santa Klauss', 'snowypal@northpole.com'))
  
     # add-to/update the default_config at  \webapp2_extras\jinja2.py
     , 'webapp2_extras.jinja2':  { 'template_path'   : [ 'template' ]

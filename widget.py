@@ -2,27 +2,23 @@
 # -*- coding: utf-8 -*-
 #from __future__ import unicode_literals
 
-from struct import Struct
-#from google.appengine.api import memcache
+import os
+import utils
+import logging
 
+from struct import Struct
 try:
     from ndb import model
 except ImportError: # pragma: no cover
     from google.appengine.ext.ndb import model
 
-import os
-
-import utils
-import logging
-# import random
-#from webapp2_extras import json
-#from security import compare_hashes
-
-
 _i   = Struct(str('=i'))     # int(4) = means native endian
 _q   = Struct(str('=q'))     # int(8) = means native endian
 _i8sc= Struct(str('=i8sc'))  # int(4).str(8).ch = means native endian
 _i16s= Struct(str('=i16s'))  # int(4).str(16) = means native endian
+
+_iB  = Struct(str('=iB'))   # int(4).uint(1) = means native endian
+_iBq = Struct(str('=iBq'))  # int(4).uint(1).int(8)
 
 NewKeysDELAY = 30       #todo: pass delay from a config setting 
 

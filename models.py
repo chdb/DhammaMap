@@ -7,15 +7,30 @@ import logging
 import utils
 
 class CredentialsError (Exception):
-    '''wrong password or authid or both'''
+    def __init__(_s, str):
+        assert isinstance(str, basestring)
+        _s.userMsg = str
+        
+    def __str__(_s):
+        return _s.userMsg
+        
+# class UnknownAuthID  (CredentialsError):
+    # pass
+# class WrongPassword  (CredentialsError):
+    # pass
+# class UnVerifiedEmail(CredentialsError):
+    # pass
     
 # class AlreadyExistsError (Exception):
     # '''this authid is already taken'''
 
-class Unique (ndb.Model):
-    """A model to implement uniqueness of values. 
-    For all entities in an ndb model, every named key is guaranteed to be unique.  
-    So we make the value a named key and see if we can create an entity with that key.
+class AuthKey (ndb.Model):
+    """A model to implement a many-to-one relationship from unique stringIDs (authID-strings) to User entities: 
+        stringID -> AuthKey  ||  AuthKey.numID -> User   (where -> goes from key to entity)
+    The stringID is a "named key" for an AuthKey entity and therefore unique among all AuthKey named keys.
+    AuthKey stores a numID, which is an integer key to some entity in another model. (a UID key for a User entity)
+    Each stringID refers to the same AuthKey entity but multiple stringIDs can of course refer to entities with the same numID.
+    Therefore a User can have multiple authID-strings as (stringID) keys.
     """
     created= ndb.DateTimeProperty (auto_now_add=True)
     userID = ndb.IntegerProperty (required=True) # todo perhaps this really should be a KeyProperty
@@ -37,23 +52,38 @@ class Unique (ndb.Model):
     @classmethod
     @ndb.transactional
     def create (_C, uniqueStr, token, uid=0): 
+        ''' Every named key for an entity in any ndb model, must be unique. (Two entities can have the same values, but their keys must differ) 
+        We can test uniqueness of a string by using it as a named key and then see if we can get() an entity with that key.
+        If not, then the string is unique over those entities. 
+        Initially at signup1 the first entity for a particual User is created with uid==0. 
+        Later when the email is validated at signup2, the User entity is created and the AuthKey uid is update to the User id.   
+        Additional AuthKey's for the same User will be created with non-zero uids.
+        '''
         k = ndb.Key(_C, uniqueStr)
-        ent = k.get()
+        ent = k.get() 
         if ent is not None:
             logging.info('key already exists: %s' % uniqueStr)
-            raise ndb.Rollback      # will return None after being caught by transactional decorator
+            raise ndb.Rollback      # return None after being caught by transactional decorator
+        #logging.debug ('Creating .token = %s' % tokID)
         ent = _C(userID=uid, token=token)
         ent.key = k
         return ent.put() 
         
     @staticmethod
-    def ownID (email):
-        return 'own:'+ email
+    def ownID (own):
+        return 'own:'+ own
+
+    @staticmethod
+    def emailID (email):
+        return 'email:'+ email
         
     @classmethod
-    def createOwnID (_C, email, tokID):
-        logging.warning (' .token = %s' % tokID)
-        return _C.create( _C.ownID (email), tokID)
+    def createOwnID (_C, own, tokID):
+         return _C.create( _C.ownID (own), tokID)
+        
+    @classmethod
+    def createEmailID (_C, email, tokID):
+        return _C.create( _C.emailID (email), tokID)
         
     @classmethod
     def byID (_C, authID, tokID=None):
@@ -61,24 +91,30 @@ class Unique (ndb.Model):
         u = _C.get_by_id (authID)
         if u:
             if tokID is None \
-            or u.token == tokID:
+            or u.token == tokID:  # check the tokID if there is one
                 return u
-            logging.warning ('Unique.token = %s' % u.token)
-            logging.warning ('       tokID = %s' % tokID)
-        return None
+            logging.warning ('non-matching AuthKey.token = %s' % u.token)
+            logging.warning ('non-matching         tokID = %s' % tokID)
+        return None               # either bad authID of non-matching tokID
 
+    @classmethod
+    def purge(_C):
+        import datetime as dt
+        import config
+        t = config.config['maxAgeSignUpTok']
+        end = dt.datetime.now() - dt.timedelta(seconds=t)
+        crop = _C.query(_C.userID == 0)\
+                 .filter(_C.created < end)
+        keys = [k for k in crop.iter(keys_only=true)]
+        ndb.delete_multi(keys)
+        return len(keys)
         
-class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever Properties
+class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
-    
-    # next two statements look like aggregation but are not - they do not add functionality 
-    # - they merely allow some indirect names in the code for User - EG instead of writing Unique we can write _C.unique_model
-    #unique_model = Unique#: The model used to ensure uniqueness.
-    # token_model  = UserToken#: The model used to store tokens.
 
     updated = ndb.DateTimeProperty (auto_now=True)
     authIDs = ndb.StringProperty   (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
-    pwdhash = ndb.StringProperty() # Hashed password string. Not a required prop because third party authentication doesn't use password.
+    pwdhash = ndb.StringProperty() # Hashed password string. NB not a required prop because third party authentication doesn't use password.
    # lastIP  = ndb.StringProperty()
     # @classmethod
     # def _uniPair (_C, n, v):
@@ -86,35 +122,24 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
         # return '%s.%s:%s' %(_C.__name__, n, v) , n
     
     def __init__(_s, *pa, **ka):
-        _s.modified = False
+        _s.modified = False         # if modified, a lazy put() is called by H_base.dispatch()
         super(UserBase, _s).__init__(*pa, **ka) # call base __init__
-                
-    # @staticmethod
-    # @ndb.transactional(xg=True)
-    # def _store (user, authID):  # uniques=None, 
-        # '''authID is expected to be previously unused 
-        # return a new UserBase, or issue warning and return None
-        # '''
-        # uid = user.put().id() # save user to Datastore and return integer id 
-        # if not Unique.create (authID, uid):
-            # logging.warning('authid: "%s" is in use.', authID) 
-            # raise ndb.Rollback
-        # logging.warning('modified set WWWWWWWWWWWWWWWW.') 
-        # return user
- 
+
     def id (_s):
         return _s._key.id()
 
     @ndb.transactional(xg=True)
     def addAuthID (_s, authID):
-        """Users may have multiple authIDs. Example authIDs:
+        """AuthID is a string used for login.
+        Users may have multiple authIDs, but each must have different prefix (before ':'). 
+        Examples:
              - own:username
-             - own:email@example.com
+             - email:myemail@example.com
              - google:username
              - yahoo:username
-           each auth_id must be user-unique ie not already taken by another user
+        Each auth_id must be unique across users ie not already taken by any other user
         """
-        if Unique.create (authID, _s.uid):         #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
+        if AuthKey.create (authID, _s.uid):         #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
             assert ':' in authID
             _s.authIDs.append (authID) #ToDo: test this line  (moved from before the conditional)
             _s.modified = True
@@ -138,14 +163,18 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
         
     @classmethod
     def byAuthID (_C, authID):
-        un = Unique.byID (authID)
+        un = AuthKey.byID (authID)
         if un:
-            return _C.byUid (un.userID)
-        logging.warning('######### invalid authID: %r' % authID)
-        return None
+            if un.userID:
+                return _C.byUid (un.userID)
+            logging.warning('Un-Verified Email AuthKey: %r' % un)
+            raise CredentialsError('This email address has not been verified - please check your emails or...')
+        logging.warning('Unknown AuthID: %r' % authID)
+        raise CredentialsError('This user name is not recognised.')
 
     @classmethod
     def byUid (_C, uid):
+        logging.debug('uid: %r' % uid)
         u = _C.get_by_id (uid)
         if not u:
             logging.warning('invalid uid: %r' % uid)
@@ -156,7 +185,7 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
         # '''authID is expected to be valid 
         # return a UserBase or issue a warning and return None
         # '''
-        # un = Unique.get_by_id(authID)
+        # un = AuthKey.get_by_id(authID)
         # if un:
             # user = _C.get_by_id(un.userID)
             # if user is None: 
@@ -167,17 +196,14 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
 
     @classmethod
     def byCredentials (_C, email, praw):
-        logging .warning('>>>>>>>>>>>>> email: %r'% email)
-        authID = Unique.ownID (email)
-        logging .warning('>>>>>>>>>>>>> authID: %r'% authID)
-        user   = User.byAuthID (authID)  
+        authID = AuthKey.emailID (email)
+        logging .debug('>>>>>>>>>>>>> authID: %r'% authID)
+        user = User.byAuthID (authID)  
         if user:
             if utils.checkPassword (user.pwdhash, praw):      
                 return user
-        # todo: replace these logs with incremented counted in db
-        # otherwise in the event of a brute force attack, the log file will get swamped and cause DoS
-        logging.warning('wrong praw: %s', praw)  
-        raise CredentialsError # invalid email
+        logging.debug('wrong praw: %s', praw)  
+        raise CredentialsError('This is not the correct password.')
         
     # def _byCredentials (_s, email, praw):     
         # if utils.checkPassword(_s.pwdhash, praw):            
@@ -187,15 +213,15 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
     def sameToken (_s, oldTok):
         if utils.sameStr(_s.token, oldTok):
             return True
-        logging.warning ('tokens dont match: user.token: %s', _s.token)
-        logging.warning ('tokens dont match: sess.token: %s', oldTok)
+        logging.debug ('tokens dont match: user.token: %s', _s.token)
+        logging.debug ('tokens dont match: sess.token: %s', oldTok)
         return False
 
     def sameIP (_s, ip):
         if utils.sameStr(_s.lastIP, ip):
             return True
-        logging.warning ('ip doesnt match: ip1: %s', _s.lastIP)
-        logging.warning ('ip doesnt match: ip2: %s', ip)
+        logging.debug ('ip doesnt match: ip1: %s', _s.lastIP)
+        logging.debug ('ip doesnt match: ip2: %s', ip)
         return False
 
     def validate (_s, tok, newTok=''):
@@ -210,7 +236,7 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
             return True
         if _s.token[0] == 'x':  # logged in
             return True
-        logging.warning ('not an empty token: %s', _s.token)
+        logging.debug ('not an empty token: %s', _s.token)
         return False
         
     def setPassword (_s, praw):
@@ -219,7 +245,7 @@ class UserBase (ndb.Model):  #todo why mot use Model and subclass with whatever 
             
     def setToken (_s, tokid):
         if _s.token != '':
-            logging.warning ('overwriting old token: %s with new token: %s', _s.token, tokid)
+            logging.debug ('overwriting old token: %s with new token: %s', _s.token, tokid)
         _s.token = tokid
         _s.modified = True
             
@@ -247,17 +273,17 @@ class User (UserBase):
     
     @staticmethod
     def credSignup (tokID, email, **ka):
-        authID = Unique.ownID(email)
+        authID = AuthKey.emailID(email)
         return User._signup (authID, tokID, authIDs=[authID] ,**ka) 
         
     # @staticmethod
     # def fedSignup (fedID, **ka):
-        # authID = Unique.fedID(fedID) 
+        # authID = AuthKey.fedID(fedID) 
         # return User._signup (un, authIDs =[authID], ka)
                    
     @staticmethod
     def _signup (authID, tokID, **ka):
-        un = Unique.byID (authID, tokID)        
+        un = AuthKey.byID (authID, tokID)        
         if un:
             user = User ( **ka)
             k = user.put()
@@ -265,7 +291,7 @@ class User (UserBase):
             un.put()
             return user
         return None  # wrong tokID or unknown authID 
-     
+
 
 
 class Email (ndb.Model):

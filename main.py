@@ -20,19 +20,20 @@ import handlers as h
 
 def app_main():
     
-    logging.getLogger().setLevel (logging.DEBUG) 
-    # Note that this setting only affects app's logs not the app engine system logs
+    logging.getLogger().setLevel (logging.DEBUG)  # Note that this setting only affects app's logs not the app engine system logs
     # Can also use command line https://cloud.google.com/appengine/docs/python/tools/devserver#Python_Command-line_arguments
     # eg   -dev_appserver.py --log_level=debug    Possible values are debug, info, warning, error, and critical.
     
     logging.info('####################### startup ###############################')
+    logging.info('####################### ======= ###############################')
 
     routes = [ 
       wa2.Route ('/'                             , h.H_Home       , 'home'               )
     , wa2.Route ('/nocookie'                     , h.H_NoCookie   , 'nocookie'           )
-    , wa2.Route ('/<ajax:a|s>/signup'            , h.H_Signup     , 'signup'             )
-    , wa2.Route ('/<ajax:a|s>/login'             , h.H_Login      , 'login'              )
-    #, wa2.Route ('/aLogin'                       , h.H_aLogin     , 'alogin'             )
+    , wa2.Route ('/signup'                       , h.H_Signup     , 'signup'             )
+   # , wa2.Route ('/login'                       , h.H_Login      , 'login'              )
+    , wa2.Route ('/login<:(/ajax)?>'               , h.H_Login      , 'login'              )
+    #, wa2.Route ('/aLogin'                       , h.H_aLogin     , 'alogIn'             )
     , wa2.Route ('/logout'                       , h.H_Logout     , 'logout'             )
     , wa2.Route ('/forgot'                       , h.H_Forgot     , 'forgot'             )
     , wa2.Route ('/secure'                       , h.H_Auth       , 'secure'             )
@@ -48,7 +49,7 @@ def app_main():
     , wa2.Route ('/admin/logs/emails/'           , h.H_AdminLogsEmails  , 'admin-logs-emails'           )
     , wa2.Route ('/admin/logs/emails/<email_id>/', h.H_AdminEmailView   , 'admin-logs-email-view'       )
     , wa2.Route ('/admin/logs/visits/'           , h.H_AdminLogsVisits  , 'admin-logs-visits'           )
-    , wa2.Route ('/crontasks/cleanuptokens/'     , h.H_AdminCleanupTokens,'admin-crontasks-cleanuptokens')
+    , wa2.Route ('/crontasks/purgeAuthKeys/'   , h.H_PurgeAuthKeys  , 'crontasks-purgeAuthKeys'   )
 
              ]
         #   , wa2.Route ('/<ttype:s|p>/<token:.+>',h.H_Verify, 'verify')
@@ -57,9 +58,10 @@ def app_main():
     bDebug = os.environ['SERVER_SOFTWARE'].startswith('Dev')
     a = wa2.WSGIApplication( routes
                            , debug =bDebug
-                           , config=myConfig.config
+                           , config=myConfig.cfg
                            )
     session.loadConfig(a)   # override/add-to  session config defaults with myConfig               
+#    logging.debug('config = %r', a.config)
     return a
     
 app = app_main()
