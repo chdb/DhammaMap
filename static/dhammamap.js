@@ -1,7 +1,7 @@
 ;(function() {
 /*jshint laxcomma:true */
 "use strict";
-	var $form = $('#form form');
+	var $form = $('#formdiv form');
 	if ($form.length>0) // if  $('#form form') element exists, IE there's a <form> element in the DOM with a parent with id='form'
 	{	
 		var xhr;
@@ -39,7 +39,7 @@
 			  //window.console.log('done waiting');
 			};
 		var successFn = function (resp)
-			{	//console.log('delay= ' + resp.delay)
+			{	console.log('delay= ' + resp.delay)
 				switch (resp.mode)
 				{	case 'ok' 	:		if (url in resp)
 														window.location = resp.url;
@@ -59,10 +59,10 @@
 		$(document).ready( function() 
 			{	//window.console.log('loaded');
 				$form.submit( function(ev) // make an ajax call instead of the default submit action 
-					{	//console.log('submit');
+					{	console.log('submit');
 						ev.preventDefault();	
 						xhr = $.ajax( { type		: "POST"
-													, url 		: $form.attr('action') + '/ajax' //url = remove '_no_js' from end of action's value
+													, url 		: $form.attr('action') //+ '/ajax' //url = remove '_no_js' from end of action's value
 													, data		: $(this).serialize() //encode all the inputs from the form
 													, dataType: 'json'
 													, beforeSend: beforeFn
@@ -168,7 +168,7 @@ function run_validator(address_text, options) {
         }
     });
 
-    // timeout incase of some kind of internal server error
+    // timeout in case of some kind of internal server error
     setTimeout(function() {
         error_message = 'Error occurred, unable to validate address.';
         if (!success) {

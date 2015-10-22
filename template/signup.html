@@ -3,10 +3,10 @@
 {% block title %}Register a new user{% endblock %}
 
 {% block maincontent %}
-<div id="form">
+<div>
     <h1>Register a new user!
     </h1>
-    <form action="/s/signup" method="POST">
+    <form action="/signup" method="POST">
         {{ m.input_csrf() }}
         {% include "input email.html" %}
         <br>

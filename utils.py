@@ -119,12 +119,15 @@ def sendEmail (**ka):
     try: 
         #todo: if mail quota not exceeded: 
         # (daily free quota is only 100 and @ max 8 per minute but you can apply for 20,000 if billing is enabled)
-        logging.info ("utils params: %r" % ka)
-        if ka['sender'].endswith('@gmail.com') \
-        or ka['sender'].endswith('@googlemail.com'): 
-            mail.send_mail(**ka)            # api.mail.send_mail() only works with gmail as sender account
-        else:         
-            mailgun.client.sendMail(**ka)   # use mailgun   
+        logging.info ("sending email with params: %r" % ka)
+        
+        #todo: un-comment
+        # if ka['sender'].endswith('@gmail.com') \
+        # or ka['sender'].endswith('@googlemail.com'): 
+            # mail.send_mail(**ka)            # api.mail.send_mail() only works with gmail as sender account
+        # else:         
+            # mailgun.client.sendMail(**ka)   # use mailgun   
+        
         return True
     except Exception as e:
         logging.error('Unable to send email: %r' % e)

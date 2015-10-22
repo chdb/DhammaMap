@@ -32,7 +32,7 @@ def app_main():
     , wa2.Route ('/nocookie'                     , h.H_NoCookie   , 'nocookie'           )
     , wa2.Route ('/signup'                       , h.H_Signup     , 'signup'             )
    # , wa2.Route ('/login'                       , h.H_Login      , 'login'              )
-    , wa2.Route ('/login<:(/ajax)?>'               , h.H_Login      , 'login'              )
+    , wa2.Route ('/login'                        , h.H_Login      , 'login'              )
     #, wa2.Route ('/aLogin'                       , h.H_aLogin     , 'alogIn'             )
     , wa2.Route ('/logout'                       , h.H_Logout     , 'logout'             )
     , wa2.Route ('/forgot'                       , h.H_Forgot     , 'forgot'             )

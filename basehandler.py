@@ -43,7 +43,12 @@ def rateLimit (fn):
         
     @wraps(fn)
     def wrapper(h, *pa, **ka):
+        for i in pa: logging.debug('pa: %r', i)
+        for i in ka: logging.debug('ka: %r = %r', i, ka[i])
+        
         nSeconds = h.app.config['loginDelay']
+        
+        
         key = '%s:%s' % ( h.__class__.__name__
                         , h.request.remote_addr or '' # ip address
                         )
@@ -53,14 +58,15 @@ def rateLimit (fn):
                         #, namespace='rate_limiting'
                         ):
             #assert 'delay' not in ka 
-            #ka['delay'] = nSeconds
+            ka['delay'] = nSeconds * 1000
             return fn(h, *pa, **ka)  # added - ok
         # n = memcache.incr(key)
         # if n:
             # nSeconds += n
             # logging.debug('nSeconds: %r', nSeconds)
-           
-        if pa[0]:       # not added - found in memcache
+        
+        # not added - found in memcache   
+        if pa[0]:       
             #logging.debug('arg0: %r', arg0)
             assert pa[0] == '/ajax'
             h.flash('http code: 429 Too Many Requests')
@@ -137,8 +143,8 @@ def taskqueueMethod (handler):
     """ Decorator to indicate that this is a taskqueue method and applies request.headers check
     """
     def _taskqueue(h, *pa, **ka):
-        """ Check if it is executed by Taskqueue in Staging or Production
-            Allow run in localhost calling the url
+        """ Check, if in Staging or Production, that h is being executed by Taskqueue 
+            If not, allow run in localhost calling the url
         """
         if h.request.headers.get('X-AppEngine-TaskName') is None \
         and config.get('environment') == "production" \
@@ -148,7 +154,6 @@ def taskqueueMethod (handler):
 
     return _taskqueue
 
-#------------------------------------
 #------------------------------------
 class ViewClass:
     """ ViewClass to insert variables into the template.
@@ -210,12 +215,12 @@ class H_Base (wa2.RequestHandler):
         return None
 
     def flash(_s, msg):
-        logging.info('>>>>>>>>>>>>> msg: %r' % msg)  
+        #logging.info('>>>>>>>>>>>>> msg: %r' % msg)  
         _s.sess.addFlash (msg)
          
     def get_fmessages (_s):
         f = _s.sess.getFlashes()
-        logging.info('>>>>>>>>>>>>> ok added fmsgs: %r' % f)  
+        #logging.info('>>>>>>>>>>>>> ok added fmsgs: %r' % f)  
         fmsgs_tmpl = Template ("""  {%- if fmessages -%}
                                         <ul>
                                             {%- for fmsg in fmessages -%}
@@ -230,22 +235,20 @@ class H_Base (wa2.RequestHandler):
         # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' %  str(fmsgs_html))  
         return utf8(fmsgs_html)
 
-    def serve (_s, filename, params=None):
-        if not params:
-            params = {}
-        params['user'] = _s.user
-        params['locale_strings'] = _s.localeStrings
+    def serve (_s, filename, **ka):
+        ka['user'] = _s.user
+        ka['locale_strings'] = _s.localeStrings
         # if not params.get('wait'): # if there's no 'wait' or its set to False
         
         #fmsgs_html = fmsgs_tmpl.render (fmsgs=_s.sess.get_flashes())
-        params['fmsgs'] = f = _s.get_fmessages()
+        ka['fmsgs'] = _s.get_fmessages()
         # logging.info('>>>>>>>>>>>>>  added fmsgs: %r' % f)
         # logging.info('>>>>>>>>>>>>>  serving %s page ', filename)
         # for k,v in params.iteritems():
             # logging.info('params:  %s  =  %r', k, v)
         # viewpath = path.join (path.dirname (__file__), 'views', view_filename)
         #_s.response.out.write (template.render (viewpath, params))
-        _s.response.write (Jinja().render (filename, params))
+        _s.response.write (Jinja().render (filename, ka))
 
     def writeResponse (_s, **ka):
         '''use this for ajax responses'''
@@ -253,25 +256,27 @@ class H_Base (wa2.RequestHandler):
         resp = json.dumps (ka)
         _s.response.write (resp)
 
-    def sendNewVerifyToken (_s, tokData, tt):
-        tokenStr = cryptoken.encodeVerifyToken (tokData, tt)
-        #logging.info('token = %s', tokenStr)
-        if   tt == 'signUp': route = 'signup_2'
-        elif tt == 'pw1': route = 'newpassword'
-        else: assert False
+    # def sendNewVerifyToken (_s, tokData, route):
+        # tokenStr = cryptoken.encodeVerifyToken (tokData, tt)
+        ##logging.info('token = %s', tokenStr)
+        # if   tt == 'signUp': route = 'signup_2'
+        # elif tt == 'pw1': route = 'newpassword'
+        # else: assert False
             
-        verify_url = _s.uri_for ( route
-                                , token=tokenStr
-                                , _full=True
-                                )
-        logging.info('sent  url = %s', verify_url)
+        # verify_url = _s.uri_for ( route
+                                # , token=tokenStr
+                                # , _full=True
+                                # )
+        # logging.info('sent  url = %s', verify_url)
         
-        #todo replace with 'an email has been sent' + code sending email
-        #msg = ()
-        _s.flash ('Send an email to user in order to verify their address. '
-                  'Ask them to click this link: <a href="{url}">{url}</a>'
-                  .format (url=verify_url)
-                 )
+        ##todo replace with 'an email has been sent' + code sending email
+        # _s.sendEmail(to=)
+        # _s.flash ('An email has been sent to you. Please follow the instructions.'
+                  
+                 # ) 
+        # _s.flash ('Click this link: <a href="{url}">{url}</a>'
+                  # .format (url=verify_url)
+                 # )
         #_s.redirect_to('home')
         # replace with redirect
         #_s.serve ('message.html', {'message': msg})

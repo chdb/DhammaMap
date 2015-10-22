@@ -67,14 +67,10 @@ class H_NoCookie (bh.H_Base):  # handles requests redirected here by decorator: 
             _s.serve ('nocookie.html')
         
 #------------------------------------
-def no_JS (q):
-    assert q == 'a' or q == 's' 
-    return q == 'a' # whether javascript(+ajax) seems to be disabled
-    
 class H_Signup (bh.H_Base):
 
     @bh.cookies
-    def get (_s, ajax):
+    def get (_s):
         #todo  
         #or else implement this make sure all SignUp links are disabled/hidden when LoggedIn: 
         # if _s.isLoggedIn():
@@ -82,35 +78,32 @@ class H_Signup (bh.H_Base):
             # _s.logOut()
         _s.serve ('signup.html')
 
-    def post (_s, q):
-        noJS = no_JS(q)
-        ok = False
+    def post (_s):
         tokid = utils.newSignupToken()
         logging.debug('signup token created: %s' % tokid)
         em = _s.request.get ('email')
-        if noJS:   # if so, email address validation has not been done 
-            #TODO: remove temporary comment below (done for testing)
-                      # = utils.validEmail(em)
-            valid, suggest = True, None
-            if valid or suggest:
-                s = 'valid' if valid else 'invalid'
-                msg = 'This email address is %s: <strong>"%s"</strong>' % (s, em)
-                if suggest:
-                    s = 'But perhaps you meant: ' if valid else 'Did you mean: '
-                    msg += 'Did you mean: <strong>"%s"</strong> ?' % (s, suggest)
-                _s.flash (msg) 
-        else: valid = True
-        if valid:
-            if m.AuthKey.createOwnID (em, tokid):
-                _s.sendNewVerifyToken (tokid, 'signUp')
-                ok = True
-              #  _s.ajaxResponse (ajax, ok=True ):  
-            else:     
-                _s.flash ('Sorry, this email address is already taken. Please choose a different one.')
-        if noJS:
-            _s.writeResponse (ok=ok, timeout=1000)
+        existed, authkey = m.AuthKey.getFromEmail (em, tokid)
+        if existed and authkey.verified():
+            msg = 'The signup process is complete. If you need to change any account details, go to ...' 
         else:
-            _s.serve ('signup.html')
+            tokenStr = cryptoken.encodeVerifyToken (tokid, 'signUp')
+            verify_url = _s.uri_for ('signup_2'
+                                    , token=tokenStr
+                                    , _full=True
+                                    )
+            msg = '''To continue the sign up process, please click this link:
+                   <a href="{url}">{url}</a>'''.format (url=verify_url)
+            if existed:
+                authkey.token = tokid
+                authkey.put()
+                msg = 'Try again! '+ msg  
+        _s.sendEmail(to=em, subject='Signing Up to Dhamma Map', html=msg)
+        
+        #todo: comment-out
+        _s.flash(msg)
+        
+        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
+        logging.debug('sent  url = %s', verify_url)
                 
 #------------------------------------
 class H_Signup_2 (bh.H_Base):
@@ -121,7 +114,7 @@ class H_Signup_2 (bh.H_Base):
         _s.logOut()
         #logging.debug('signup token resent: %s' % token)
         url = _s.uri_for ('signup_2', token=token)
-        _s.serve ('signup2.html', {'submit_url':url})
+        _s.serve ('signup2.html', submit_url=url)
       
     def post (_s, token):
         _s.logOut()
@@ -158,25 +151,30 @@ class H_Forgot (bh.H_Base):
 
     def post (_s):
         em = _s.request.get ('email')
-        user = m.User._byOwnID (em)
-        if user:
-            # todo:  checks eg security questions, captcha
-            tokid = utils.newForgotToken()
-            logging.debug ('@bh token = %s',tokid)
-            user.setToken (tokid)
-            _s.sendNewVerifyToken ((user.id(), tokid), 'pw1')
-            _s.serve ('message.html')
+        tokid = utils.newForgotToken()
+        authkey = m.AuthKey._byEmail (em)
+        if authkey and authkey.verified():
+            authkey.token = tokid
+            authkey.put()
+            tokenStr = cryptoken.encodeVerifyToken (tokid, 'pw1')
+            verify_url = _s.uri_for ('newpassword'
+                                    , token=tokenStr
+                                    , _full=True
+                                    )
+            msg = '''Click here to proceed to security questions before changing your password:
+                    <a href="{url}">{url}</a>'''.format (url=verify_url)
         else:
-            logging.info ('Could not find any user entry for username: %s', em)
-            _s.flash('We could not find any user with this username.')
-            _s.serve ('forgot.html')
+            msg = 'Sorry but this account does not exist'                 
+        _s.sendEmail(to=em, subject='Lost password to Dhamma Map', html=msg)
+        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
+        logging.info('sent  url = %s', verify_url)
 
 #------------------------------------
 class H_NewPassword (bh.H_Base):
     '''get and post are called when 1) anon user has lost password 
                                 or  2) auth user wants to change password'''
 
-    def serve (_s, uid, newTok):
+    def _serve (_s, uid, newTok):
         logging.debug ('H_NewPassword serve  called')
         assert uid, 'no uid!'
         data = (uid, newTok, _s.request.remote_addr)
@@ -188,7 +186,7 @@ class H_NewPassword (bh.H_Base):
         logging.debug ('H_NewPassword GET handler called')
         if not token:
             newTok = utils.newPasswordToken()
-            return loggedInRecently(_s.serve) (_s.sess['_userID'], newTok)
+            return loggedInRecently(_s._serve) (_s.sess['_userID'], newTok)
 
         tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
         if tokData:
@@ -197,7 +195,7 @@ class H_NewPassword (bh.H_Base):
             if user:
                 newTok = utils.newPasswordToken()
                 if user.validate(oldTok, newTok):
-                    return _s.serve (uid, newTok)
+                    return _s._serve (uid, newTok)
         _s.logOut()
         _s.flash ('Your token is invalid. It may have expired. Please try again')
         return _s.redirect_to ('forgot')
@@ -269,14 +267,13 @@ class H_NewPassword (bh.H_Base):
 class H_Login (bh.H_Base):
 
     @bh.cookies
-    def get (_s, q=False):
+    def get (_s):
         _s.logOut()
-        _s.serve ('login.html', {'wait':False})
+        _s.serve ('login.html', wait=False)
 
     @bh.rateLimit
-    def post (_s, ajax=False):
+    def post (_s, delay=5000):
         logging.debug('~~~~~~ ######### q=%r'%ajax)
-        #noJS = no_JS(q)
         em = _s.request.get('email')
         pw = _s.request.get('password')
         logging.debug('~~~~~~ ######### em=%r'%em)
@@ -285,20 +282,15 @@ class H_Login (bh.H_Base):
             user = m.User.byCredentials (em, pw)
             if user:
                 _s.logIn(user) 
-                if ajax:
-                    return _s.redirect_to ('secure')
                 return _s.writeResponse (mode='ok', url='secure') 
             logging.error('no user')
         except m.CredentialsError as e:
             if _s.app.config['HighSecurity']:
-                _s.flash ('If you have completed the sign-up process, then either the username or the password is wrong. Please try again or click "signUp" to register your login details.')
+                _s.flash ('log-in failed: either the username or the password is wrong. Please try again or click "signUp" to register your login details.')
             else:
                 _s.flash (e.userMsg)          
-        if ajax:
-            _s.writeResponse (mode='wait', delay=5000)
-        else:
-            _s.serve ('login.html')
-
+            _s.writeResponse (mode='wait', delay=delay)
+ 
 #------------------------------------
 class H_Logout (bh.H_Base):
 
@@ -410,15 +402,11 @@ class H_SendEmail (bh.H_Base):
     
     @bh.taskqueueMethod
     def post(_s):
-        params = dict(_s.request.POST.items())
-        logging.info ("params: %r" % params)
-         
-        ok = utils.sendEmail(**params)
-        
+        ka = dict(_s.request.POST.items())
+        ok = utils.sendEmail(**ka)        
         if _s.app.config['log_email']:
             try:
-                log = m.Email (sent=ok, **params)
-                log.put()
+                m.Email.create (sent=ok, **ka)
             except: # (apiproxy_errors.OverQuotaError, BadValueError):
                 logging.exception("Error saving Email Log in datastore")
  

@@ -12,36 +12,41 @@
 			{% block mediaCSS %}
 			{% endblock %}
         </style>
-
     </head>
-    <body>
-        <div id="flashes">
-			{{ fmsgs }}
-        </div>
-        <div class="content">
-            {% block maincontent %}
-            {% endblock %}
-        </div>
-        <div>
-            <footer>
-                <hr>                
-				<p>
-				{% if user %}
-					Logged in as: <span style="background-color: OldLace">{{ user.forename }} {{ user.lastname }}</span>
-					| <a href="/logout">Logout</a>
-				{% else %}
-					Not logged in yet: <a href="/login">Login or Forgot Password)</a>
-				{% endif %}
-                    | <a href="/">Home</a>
-                    | <a href="/signup">New user</a>
-                    | <a href="/secure{{ token }}">Secured page</a> (you can see this after login)
-                </p>
-            </footer>
-        </div>
- 		<script src="../static/dhammamap.js"></script>
-		<script>
-		{% block mediaJS %}
-		{% endblock %}    
-		</script>
+	<body>
+ 		<noscript>
+			<h1>This website requires Javascript to be enabled!</h1>
+        </noscript>
+		<div id="js-only" style="display:none">
+			<div id="flashes">
+				{{ fmsgs }}
+			</div>
+			<div class="content">
+				{% block maincontent %}
+				{% endblock %}
+			</div>
+			<div>
+				<footer>
+					<hr>                
+					<p>
+					{% if user %}
+						Logged in as: <span style="background-color: OldLace">{{ user.forename }} {{ user.lastname }}</span>
+						| <a href="/logout">Logout</a>
+					{% else %}
+						Not logged in yet: <a href="/login">Login or Forgot Password)</a>
+					{% endif %}
+						| <a href="/">Home</a>
+						| <a href="/signup">New user</a>
+						| <a href="/secure{{ token }}">Secured page</a> (you can see this after login)
+					</p>
+				</footer>
+			</div>
+			<script src="../static/dhammamap.js"></script>
+			<script>
+				document.getElementById("js-only").style.display = "block";
+				{% block mediaJS %}
+				{% endblock %}    
+			</script>
+        </div>   
 	</body>
 </html>

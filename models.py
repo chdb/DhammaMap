@@ -51,23 +51,29 @@ class AuthKey (ndb.Model):
 
     @classmethod
     @ndb.transactional
-    def create (_C, uniqueStr, token, uid=0): 
+    def _getFrom (_C, uniqueStr, token): 
         ''' Every named key for an entity in any ndb model, must be unique. (Two entities can have the same values, but their keys must differ) 
         We can test uniqueness of a string by using it as a named key and then see if we can get() an entity with that key.
         If not, then the string is unique over those entities. 
         Initially at signup1 the first entity for a particual User is created with uid==0. 
         Later when the email is validated at signup2, the User entity is created and the AuthKey uid is update to the User id.   
         Additional AuthKey's for the same User will be created with non-zero uids.
+        returns tuple: boolean: whether already exists (ie not created)
+                       AuthID entity
         '''
         k = ndb.Key(_C, uniqueStr)
         ent = k.get() 
         if ent is not None:
             logging.info('key already exists: %s' % uniqueStr)
-            raise ndb.Rollback      # return None after being caught by transactional decorator
+    #        if ent.verified()
+            return True, ent
+    #       ent.token = token
+    #       return False, ent.put()
+            #raise ndb.Rollback      # return None after being caught by transactional decorator
         #logging.debug ('Creating .token = %s' % tokID)
-        ent = _C(userID=uid, token=token)
+        ent = _C(userID=0, token=token)
         ent.key = k
-        return ent.put() 
+        return False, ent.put() 
         
     @staticmethod
     def ownID (own):
@@ -78,12 +84,17 @@ class AuthKey (ndb.Model):
         return 'email:'+ email
         
     @classmethod
-    def createOwnID (_C, own, tokID):
-         return _C.create( _C.ownID (own), tokID)
+    def getFromOwnID (_C, own, tokID):
+         return _C._getFrom( _C.ownID (own), tokID)
         
     @classmethod
-    def createEmailID (_C, email, tokID):
-        return _C.create( _C.emailID (email), tokID)
+    def getFromEmail (_C, email, tokID):
+        return _C._getFrom( _C.emailID (email), tokID)
+        
+    @classmethod
+    def _byEmail (_C, email):
+        '''use with caution - no password needed'''
+        return _C.byID ( _C.emailID (email))
         
     @classmethod
     def byID (_C, authID, tokID=None):
@@ -109,6 +120,9 @@ class AuthKey (ndb.Model):
         ndb.delete_multi(keys)
         return len(keys)
         
+    def verified(_s):
+        return _s.userID != 0
+        
 class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
 
@@ -133,14 +147,16 @@ class UserBase (ndb.Model):
         """AuthID is a string used for login.
         Users may have multiple authIDs, but each must have different prefix (before ':'). 
         Examples:
-             - own:username
+             - own:myusername
              - email:myemail@example.com
-             - google:username
-             - yahoo:username
+             - google:g-username
+             - yahoo:y-username
         Each auth_id must be unique across users ie not already taken by any other user
+        
         """
-        if AuthKey.create (authID, _s.uid):         #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
-            assert ':' in authID
+        assert ':' in authID
+        ok = AuthKey._getFrom (authID, _s.uid) [0] #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
+        if ok:        
             _s.authIDs.append (authID) #ToDo: test this line  (moved from before the conditional)
             _s.modified = True
             return True
@@ -295,11 +311,21 @@ class User (UserBase):
 
 
 class Email (ndb.Model):
-    sent   = ndb.BooleanProperty(required=True)
     sender = ndb.StringProperty (required=True)
     to     = ndb.StringProperty (required=True)
     subject= ndb.StringProperty (required=True)
-    body   = ndb.TextProperty   (required=True)  # text version of the body
-    html   = ndb.TextProperty()                  # html version
+    body   = ndb.TextProperty   (required=True)  
+    html   = ndb.BooleanProperty(required=True)   # whether body is html 
+    sent   = ndb.BooleanProperty(required=True)
     when   = ndb.DateTimeProperty (auto_now_add=True)
  
+    @classmethod
+    def create(_C, **ka):
+        assert ('html' in ka) != ('body' in ka)
+        bHtml = 'html' in ka
+        if bHtml:
+            ka['body'] = ka.pop ('html')
+        emailLog = _C (html=bHtml, **ka)
+        emailLog.put()
+ 
+    
