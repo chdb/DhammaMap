@@ -92,7 +92,7 @@ class AuthKey (ndb.Model):
         return _C._getFrom( _C.emailID (email), tokID)
         
     @classmethod
-    def _byEmail (_C, email):
+    def byEmail (_C, email):
         '''use with caution - no password needed'''
         return _C.byID ( _C.emailID (email))
         
@@ -110,12 +110,11 @@ class AuthKey (ndb.Model):
 
     @classmethod
     def purge(_C):
-        import datetime as dt
-        import config
-        t = config.config['maxAgeSignUpTok']
-        end = dt.datetime.now() - dt.timedelta(seconds=t)
-        crop = _C.query(_C.userID == 0)\
-                 .filter(_C.created < end)
+        #t = config.config['maxAgeSignUpTok']
+        #end = dt.datetime.now() - dt.timedelta(seconds=t)
+        crop = _C.query(_C.userID == 0) \
+               # .filter(_C.created < end)
+                 .filter(not inCfgPeriod (_C.created, 'maxAgeSignUpTok'):
         keys = [k for k in crop.iter(keys_only=true)]
         ndb.delete_multi(keys)
         return len(keys)
@@ -126,7 +125,8 @@ class AuthKey (ndb.Model):
 class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
 
-    updated = ndb.DateTimeProperty (auto_now=True)
+    updated      = ndb.DateTimeProperty (auto_now=True)
+    lockoutstart = ndb.DateTimeProperty()
     authIDs = ndb.StringProperty   (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
     pwdhash = ndb.StringProperty() # Hashed password string. NB not a required prop because third party authentication doesn't use password.
    # lastIP  = ndb.StringProperty()
@@ -212,15 +212,24 @@ class UserBase (ndb.Model):
 
     @classmethod
     def byCredentials (_C, email, praw):
-        authID = AuthKey.emailID (email)
-        logging .debug('>>>>>>>>>>>>> authID: %r'% authID)
-        user = User.byAuthID (authID)  
+        user = _C.byEmail (email)  
         if user:
+            if user.lockoutstart:
+                if inCfgPeriod (user.lockoutstart, 'lockoutPeriod'):
+                    logging.warning ('locked out: %s', email)  
+                    raise CredentialsError('locked out.')
             if utils.checkPassword (user.pwdhash, praw):      
                 return user
-        logging.debug('wrong praw: %s', praw)  
-        raise CredentialsError('This is not the correct password.')
+            logging.debug('wrong praw: %s', praw)  
+        raise CredentialsError('This is not the correct password for this username.')
         
+    @classmethod
+    def byEmail (_C, email):
+        '''use with caution - no password needed'''
+        authID = AuthKey.emailID (email)
+        logging .debug('>>>>>>>>>>>>> authID: %r'% authID)
+        return User.byAuthID (authID)  
+                
     # def _byCredentials (_s, email, praw):     
         # if utils.checkPassword(_s.pwdhash, praw):            
              # return _s if _s.isValidated() else None # user has not validated
@@ -301,13 +310,12 @@ class User (UserBase):
     def _signup (authID, tokID, **ka):
         un = AuthKey.byID (authID, tokID)        
         if un:
-            user = User ( **ka)
+            user = User (**ka)
             k = user.put()
             un.userID = k.id()
             un.put()
             return user
         return None  # wrong tokID or unknown authID 
-
 
 
 class Email (ndb.Model):
@@ -322,10 +330,12 @@ class Email (ndb.Model):
     @classmethod
     def create(_C, **ka):
         assert ('html' in ka) != ('body' in ka)
+        # Semantics of params 'body' and 'html' are different in Email model from ones for the input params (which were as used for sending email. )
+        # Instead of either having content in one or the other param, all content goes in 'body' and we distiguish with boolean 'html'
         bHtml = 'html' in ka
         if bHtml:
-            ka['body'] = ka.pop ('html')
-        emailLog = _C (html=bHtml, **ka)
+            ka['body'] = ka.pop ('html') # delete string 'html'
+        emailLog = _C (html=bHtml, **ka) # insert boolean 'html' 
         emailLog.put()
  
     

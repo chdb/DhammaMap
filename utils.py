@@ -7,6 +7,8 @@ import time
 import os
 import base64
 from webapp2_extras import security
+import datetime as dt
+import config
 
 def utf8 (u):
     assert isinstance (u, unicode)
@@ -60,6 +62,10 @@ def validTimeStamp (timeStamp, maxAge):
         return True
     return timeStampNow() - timeStamp <= maxAge
 
+def inCfgPeriod (datetime, cfg_field):
+    t = config.config[cfg_field]
+    end = dt.datetime.now() - dt.timedelta(seconds=t)
+    return datetime < end
 
 # def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare_digest
     # r = _sameStr (a, b)

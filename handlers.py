@@ -84,7 +84,7 @@ class H_Signup (bh.H_Base):
         em = _s.request.get ('email')
         existed, authkey = m.AuthKey.getFromEmail (em, tokid)
         if existed and authkey.verified():
-            msg = 'The signup process is complete. If you need to change any account details, go to ...' 
+            msg = 'The signup process is complete. If you need to change your account details, go to ...' #todo: edit page
         else:
             tokenStr = cryptoken.encodeVerifyToken (tokid, 'signUp')
             verify_url = _s.uri_for ('signup_2'
@@ -113,33 +113,37 @@ class H_Signup_2 (bh.H_Base):
         logging.debug ('signup_2 GET handler called')
         _s.logOut()
         #logging.debug('signup token resent: %s' % token)
-        url = _s.uri_for ('signup_2', token=token)
-        _s.serve ('signup2.html', submit_url=url)
+        tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
+        logging.debug('signup token found: %s' % tokID)
+        if tokID:        
+            url = _s.uri_for ('signup_2', token=token)
+            _s.serve ('signup2.html', submit_url=url)
+        else:
+            _s.flash ('That link is invalid in some way. It might be too old.  Please try again.')
+            _s.serve ('signup.html') 
+            
       
     def post (_s, token):
         _s.logOut()
-        try:
-            tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
-            logging.debug('signup token found: %s' % tokID)
-            if tokID:
-                praw = _s.request.get('password')
-                ctry = i18n.get_country_code(_s.request) or ''
-                user = m.User.credSignup( tokID
-                                      , _s.request.get('email')
-                                      , pwdhash = utils.passwordHString (praw)
-                                      , forename=_s.request.get('forename')
-                                      , lastname=_s.request.get('lastname')
-                                      , country = ctry
-                                      )
-                if user:
-                    _s.logIn (user)
-                    return _s.redirect_to ('secure')
+        tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
+        logging.debug('signup token found: %s' % tokID)
+        if tokID:
+            praw = _s.request.get('password')
+            user = m.User.credSignup( tokID
+                                    , _s.request.get('email')
+                                    , pwdhash = utils.passwordHString (praw)
+                                    , forename=_s.request.get('forename')
+                                    , lastname=_s.request.get('lastname')
+                                    , country = i18n.get_country_code(_s.request)
+                                    )
+            if user:
+                _s.logIn (user)
+                return _s.redirect_to ('secure')
         
-        except m.CredentialsError:
-            _s.flash ('The email or password is not valid for this link.  '
-            'They must be exactly the same as the ones you used before. Please try again.')          
+            _s.flash ('The email is not valid for this link.  '
+            'It must be exactly the same as the one you used before. Please try again.')          
         else:
-            _s.flash ('This link is invalid in some way. It might be too old.  Please try again.') # , 'signup1')           
+            _s.flash ('The token is invalid in some way. It might be too old.  Please try again.') # , 'signup1')           
         _s.redirect_to ('signup')
        
 #------------------------------------   
@@ -151,21 +155,18 @@ class H_Forgot (bh.H_Base):
 
     def post (_s):
         em = _s.request.get ('email')
-        tokid = utils.newForgotToken()
-        authkey = m.AuthKey._byEmail (em)
+        tokid = utils.newPasswordToken()
+        authkey = m.AuthKey.byEmail (em)
         if authkey and authkey.verified():
             authkey.token = tokid
             authkey.put()
             tokenStr = cryptoken.encodeVerifyToken (tokid, 'pw1')
-            verify_url = _s.uri_for ('newpassword'
-                                    , token=tokenStr
-                                    , _full=True
-                                    )
-            msg = '''Click here to proceed to security questions before changing your password:
-                    <a href="{url}">{url}</a>'''.format (url=verify_url)
+            msg = '''<a href="%s">Click here</a> to proceed to security questions before changing your password.
+                  '''% _s.uri_for ('newpassword', token=tokenStr, _full=True) # todo: security questions
         else:
-            msg = 'Sorry but this account does not exist'                 
-        _s.sendEmail(to=em, subject='Lost password to Dhamma Map', html=msg)
+            msg = '''This email address does not have an account at DhammaMap. If you want to open an account please <a href="%s">click here</a>.
+                  '''% _s.uri_for ('signup', _full=True)                 
+        _s.sendEmail (to=em, subject='Lost password to Dhamma Map', html=msg)
         _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
         logging.info('sent  url = %s', verify_url)
 

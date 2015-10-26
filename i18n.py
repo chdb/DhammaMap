@@ -86,12 +86,15 @@ def getRequestLocation(request, field):
                         "City"      :   name of the city 
                         "CityLatLong":  Lat, Long as a string eg "37.386051,-122.083851"   
     """
-    return request.headers.get('X-AppEngine-' + field)
+    return request.headers.get('X-AppEngine-' + field) or ''
 
-def get_city_code    (request): return getRequestLocation(request, "Country"   )
-def get_region_code  (request): return getRequestLocation(request, "Region"    )
-def get_country_code (request): return getRequestLocation(request, "City"      )
-def get_city_lat_long(request): return getRequestLocation(request, "CityLatLong")
+def get_country_code_(request): return getRequestLocation (request, "Country") # can return 'ZZ' meaning 'Country unknown'
+def get_region_code  (request): return getRequestLocation (request, "Region" )
+def get_city_code    (request): return getRequestLocation (request, "City"   )   
+def get_city_lat_long(request): return getRequestLocation (request, "CityLatLong")
+def get_country_code (request): 
+    ctry = get_country_code_ (request) 
+    return '' if ctry == 'ZZ' else ctry 
 
 def get_locale_from_accept_header(request, localeTags):
     """ Detect a locale from request.header 'Accept-Language'
