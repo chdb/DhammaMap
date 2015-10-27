@@ -41,8 +41,12 @@
 		var successFn = function (resp)
 			{	console.log('delay= ' + resp.delay)
 				switch (resp.mode)
-				{	case 'ok' 	:		if (url in resp)
+				{	case 'ok' 	:		if ("url" in resp)
+													{	console.log('resp.mode: ' + resp.mode);
+														console.log('resp.url: '  + resp.url);
+														console.log('resp.delay: '+ resp.delay);
 														window.location = resp.url;
+													}
 						break;
 					case 'wait' :		wait(resp);
 						break;

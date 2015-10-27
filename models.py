@@ -6,13 +6,13 @@ from google.appengine.ext import ndb
 import logging
 import utils
 
-class CredentialsError (Exception):
-    def __init__(_s, str):
-        assert isinstance(str, basestring)
-        _s.userMsg = str
+# class CredentialsError (Exception):
+    # def __init__(_s, str):
+        # assert isinstance(str, basestring)
+        # _s.userMsg = str
         
-    def __str__(_s):
-        return _s.userMsg
+    # def __str__(_s):
+        # return _s.userMsg
         
 # class UnknownAuthID  (CredentialsError):
     # pass
@@ -113,8 +113,7 @@ class AuthKey (ndb.Model):
         #t = config.config['maxAgeSignUpTok']
         #end = dt.datetime.now() - dt.timedelta(seconds=t)
         crop = _C.query(_C.userID == 0) \
-               # .filter(_C.created < end)
-                 .filter(not inCfgPeriod (_C.created, 'maxAgeSignUpTok'):
+                 .filter(not inCfgPeriod(_C.created, 'maxAgeSignUpTok'))
         keys = [k for k in crop.iter(keys_only=true)]
         ndb.delete_multi(keys)
         return len(keys)
@@ -183,13 +182,16 @@ class UserBase (ndb.Model):
         if un:
             if un.userID:
                 return _C.byUid (un.userID)
-            logging.warning('Un-Verified Email AuthKey: %r' % un)
-            raise CredentialsError('This email address has not been verified - please check your emails or...')
-        logging.warning('Unknown AuthID: %r' % authID)
-        raise CredentialsError('This user name is not recognised.')
+            logging.warning('Un-Verified Email. AuthKey: %r' % un)
+        else:
+            logging.warning('User name not recognised.Unknown AuthID: %r' % authID)
+        return None
 
     @classmethod
     def byUid (_C, uid):
+        # import traceback
+        # for l in traceback.format_stack():
+            # logging.debug(l.strip())
         logging.debug('uid: %r' % uid)
         u = _C.get_by_id (uid)
         if not u:
@@ -214,14 +216,13 @@ class UserBase (ndb.Model):
     def byCredentials (_C, email, praw):
         user = _C.byEmail (email)  
         if user:
-            if user.lockoutstart:
-                if inCfgPeriod (user.lockoutstart, 'lockoutPeriod'):
-                    logging.warning ('locked out: %s', email)  
-                    raise CredentialsError('locked out.')
+            if user.lockoutstart /
+            and utils.inCfgPeriod (user.lockoutstart, 'lockoutPeriod'):
+                logging.warning ('locked out: %s', email)
+                return None
             if utils.checkPassword (user.pwdhash, praw):      
-                return user
-            logging.debug('wrong praw: %s', praw)  
-        raise CredentialsError('This is not the correct password for this username.')
+                logging.debug('wrong praw: %s', praw)  
+        return user
         
     @classmethod
     def byEmail (_C, email):

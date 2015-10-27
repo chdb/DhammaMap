@@ -274,23 +274,16 @@ class H_Login (bh.H_Base):
 
     @bh.rateLimit
     def post (_s, delay=5000):
-        logging.debug('~~~~~~ ######### q=%r'%ajax)
         em = _s.request.get('email')
         pw = _s.request.get('password')
         logging.debug('~~~~~~ ######### em=%r'%em)
         logging.debug('~~~~~~ ######### pw=%r'%pw)
-        try:
-            user = m.User.byCredentials (em, pw)
-            if user:
-                _s.logIn(user) 
-                return _s.writeResponse (mode='ok', url='secure') 
-            logging.error('no user')
-        except m.CredentialsError as e:
-            if _s.app.config['HighSecurity']:
-                _s.flash ('log-in failed: either the username or the password is wrong. Please try again or click "signUp" to register your login details.')
-            else:
-                _s.flash (e.userMsg)          
-            _s.writeResponse (mode='wait', delay=delay)
+        user = m.User.byCredentials (em, pw)
+        if user:
+            _s.logIn(user) 
+            return _s.writeResponse (mode='ok', url='secure') 
+        _s.flash ('log-in failed: either the username or the password is wrong. Please try again or click "signUp" to register your login details.')
+        _s.writeResponse (mode='wait', delay=delay)
  
 #------------------------------------
 class H_Logout (bh.H_Base):
