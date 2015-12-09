@@ -45,6 +45,14 @@ def encodeSessionToken (sess, user=None):
         return _encode ('auth', data, uid)
     return _encode ('anon', data)
 
+TokenTypes = ( 'anon'
+             , 'auth'
+             , 'signUp'
+             , 'pw1'
+             , 'pw2'
+             )
+def _tokenType (code):   return TokenTypes [code]
+def _tokenTypeCode (tt): return TokenTypes.index(tt)
 #.........................................
         
 class _TokenData (object):
@@ -87,23 +95,6 @@ class _TokenData (object):
         logging.warning ('%s in Token: %r', x, _s.token)
         return False 
  #.........................................          
-
-def _tokenType (code):
-    if code == 0: return 'anon'
-    if code == 1: return 'auth'
-    if code == 2: return 'signUp'
-    if code == 3: return 'pw1'
-    if code == 4: return 'pw2'
-    assert False, 'invalid TokenTypeCode: %d' % code
-    
-def _tokenTypeCode (tt):
-    if tt == 'anon'  : return 0
-    if tt == 'auth'  : return 1
-    if tt == 'signUp': return 2
-    if tt == 'pw1'   : return 3
-    if tt == 'pw2'   : return 4
-    assert False, 'invalid TokenType: %s' % tt
-
 # Some global constants to hold the lengths of component substrings of the token         
 CH  = 1
 TS  = 4
@@ -137,12 +128,7 @@ def _serialize (data):
     
 def _deserialize (data):
     try: 
-        #assert isinstance (data, unicode)
-        #logging.debug('1 data: %r', data)
-        #logging.debug('deserializing data: %r', data)       
-        obj = json.loads (data)
-        #logging.debug('2 json: %r', obj)
-        #logging.debug('3 %r', byteify(obj))
+         obj = json.loads (data)
         return obj # byteify(obj)
     except Exception, e:
         logging.exception(e)
@@ -152,9 +138,6 @@ def _encode (tokentype, obj, uid=None):
     """ obj is serializable session data
         returns a token string of base64 chars with iv and encrypted tokentype, uid and data
     """
-    #logging.debug('encode obj: %r', obj)
-    #logging.debug('encode obj: %r', _deserialize (data))
-    
     assert bool(uid) == (tokentype == 'auth')
     tt = _tokenTypeCode (tokentype)
     now = utils.sNow()
@@ -164,11 +147,7 @@ def _encode (tokentype, obj, uid=None):
         assert uid <    2**63  ,'uid more than: (2**63)-1'
         data = W._iBq.pack (now, tt, uid)   # ts + tt + uid
     else:                                                
-        data = W._iB.pack (now, tt)         # ts + tt
-    
-    #logging.debug('encoded now:%d tt:%d uid:%d', now, tt, uid or 0)     
-    #logging.debug('encoded data: %r', data)     
-    
+        data = W._iB.pack (now, tt)         # ts + tt    
     data  += _serialize (obj)               # ts + tt + [uid +] data
     h20 = _hash (data, now)                                    
     return urlsafe_b64encode (data + h20)   # ts + tt + [uid +] data + mac
@@ -182,8 +161,6 @@ def _decode (token):
         raise Base64Error
     
     ts, tt, uid = W._iBq.unpack_from (bytes)     # uid is arbitrary unless tt == 0 (1st 8 bytes of the MAC(20 bytes)).
-    #logging.debug('decoded ts:%d tt:%d uid:%d', ts, tt, uid)     
-        
     ttype = _tokenType (tt)
     if ttype == 'auth': 
         preDataLen = TS+CH+UID
@@ -191,7 +168,6 @@ def _decode (token):
         preDataLen = TS+CH
         uid = None      # if ttype =! 'auth' then there was no uid, so delete arbitrary uid value
     data = bytes[ :-MAC]
-    #logging.debug('decoding data: %r', data)     
     mac = bytes [-MAC: ] 
     mac2 = _hash (data, ts)
     bMac = utils.sameStr (mac, mac2)
