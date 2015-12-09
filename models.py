@@ -5,7 +5,8 @@
 from google.appengine.ext import ndb
 import logging
 import utils
-
+import config
+import datetime as d
 # class CredentialsError (Exception):
     # def __init__(_s, str):
         # assert isinstance(str, basestring)
@@ -112,8 +113,10 @@ class AuthKey (ndb.Model):
     def purge(_C):
         #t = config.config['maxAgeSignUpTok']
         #end = dt.datetime.now() - dt.timedelta(seconds=t)
+        def expired(dt):
+            return d.datetime.now() > dt + d.timedelta(seconds=config.cfg['maxAgeSignUpTok'])
         crop = _C.query(_C.userID == 0) \
-                 .filter(not inCfgPeriod(_C.created, 'maxAgeSignUpTok'))
+                 .filter(expired(_C.created))
         keys = [k for k in crop.iter(keys_only=true)]
         ndb.delete_multi(keys)
         return len(keys)
@@ -125,7 +128,7 @@ class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
 
     updated      = ndb.DateTimeProperty (auto_now=True)
-    lockoutstart = ndb.DateTimeProperty()
+    lockoutexpiry = ndb.DateTimeProperty()
     authIDs = ndb.StringProperty   (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
     pwdhash = ndb.StringProperty() # Hashed password string. NB not a required prop because third party authentication doesn't use password.
    # lastIP  = ndb.StringProperty()
@@ -216,13 +219,15 @@ class UserBase (ndb.Model):
     def byCredentials (_C, email, praw):
         user = _C.byEmail (email)  
         if user:
-            if user.lockoutstart /
-            and utils.inCfgPeriod (user.lockoutstart, 'lockoutPeriod'):
+            #p = config.cfg['login'].period
+            if user.lockoutexpiry \
+            and user.lockoutexpiry > d.datetime.now():
                 logging.warning ('locked out: %s', email)
-                return None
-            if utils.checkPassword (user.pwdhash, praw):      
+                return 'locked', None
+            if utils.badPassword (user.pwdhash, praw):      
                 logging.debug('wrong praw: %s', praw)  
-        return user
+                return 'bad', None
+        return 'good', user
         
     @classmethod
     def byEmail (_C, email):

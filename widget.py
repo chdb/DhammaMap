@@ -36,7 +36,7 @@ class W (model.Model):
     
     @staticmethod
     def _newkeys(delay=0): 
-        ts = utils.timeStampNow()
+        ts = utils.sNow()
         if delay:
             ts += delay # new keys come into effect after delay seconds
         return ts , os.urandom (W.KLen)
@@ -69,7 +69,7 @@ class W (model.Model):
 
     # @staticmethod
     # def keysNow():
-        # return W.keys (utils.timeStampNow())
+        # return W.keys (utils.sNow())
         
     @staticmethod
     def keys (ts):
@@ -95,7 +95,7 @@ class W (model.Model):
     def purge (maxAge):
         '''remove all items older than maxAge'''
         W._get()
-        t = utils.timeStampNow() - maxAge
+        t = utils.sNow() - maxAge
         W.list = [i for i in W.list if i[0] >= t]
         W._put()
       

@@ -8,12 +8,12 @@ from widget import W
 #from models import Email, AuthKey, User, CredentialsError
 import models as m
 from Libs.user_agents import parse as ua_parse
-import basehandler as bh
+import basehandler as b
+import datetime as d
 import logging
 import cryptoken
-import utils
-from utils import utf8
-import i18n
+import utils as u
+import i18n as i
 #import json
           
 #from os import path
@@ -24,7 +24,7 @@ import i18n
 #import httplib as http
 
 #------------------------------------
-class H_Home (bh.H_Base):
+class H_Home (b.H_Base):
 
     def get (_s):
         # x =  _s.sess.iteritems()
@@ -47,17 +47,18 @@ class H_Home (bh.H_Base):
         _s.serve ('home.html')
         
 #------------------------------------
-class H_NoCookie (bh.H_Base):  # handles requests redirected here by decorator: @bh.cookies  
+class H_NoCookie (b.H_Base):  # handles requests redirected here by decorator: @b.cookies  
 
     def get (_s):
         if _s.sess:
             # ok - so there is a cookie in there now 
+            _s.sess['rtt'] = u.msNow() - _s.sess['ts']
             url = _s.request.get('nextUrl')
-            _s.redirect (utf8(url))
+            _s.redirect (u.utf8(url)) # go back to the page you first thought of
         else:
             ua = _s.request.headers['User-Agent']
             res = ua_parse(ua) 
-            #client = utf8(res)
+            #client = u.utf8(res)
             logging.info('cookies disabled on user agent: %s',  res)
           
             # todo put links in page with cookie enabling advice appropriate to the browser
@@ -67,9 +68,9 @@ class H_NoCookie (bh.H_Base):  # handles requests redirected here by decorator: 
             _s.serve ('nocookie.html')
         
 #------------------------------------
-class H_Signup (bh.H_Base):
+class H_Signup (b.H_Base):
 
-    @bh.cookies
+    @b.cookies
     def get (_s):
         #todo  
         #or else implement this make sure all SignUp links are disabled/hidden when LoggedIn: 
@@ -79,7 +80,7 @@ class H_Signup (bh.H_Base):
         _s.serve ('signup.html')
 
     def post (_s):
-        tokid = utils.newSignupToken()
+        tokid = u.newSignupToken()
         logging.debug('signup token created: %s' % tokid)
         em = _s.request.get ('email')
         existed, authkey = m.AuthKey.getFromEmail (em, tokid)
@@ -97,18 +98,18 @@ class H_Signup (bh.H_Base):
                 authkey.token = tokid
                 authkey.put()
                 msg = 'Try again! '+ msg  
+            logging.debug('sent  url = %s', verify_url)
         _s.sendEmail(to=em, subject='Signing Up to Dhamma Map', html=msg)
         
         #todo: comment-out
         _s.flash(msg)
-        
+
         _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
-        logging.debug('sent  url = %s', verify_url)
                 
 #------------------------------------
-class H_Signup_2 (bh.H_Base):
-
-    @bh.cookies
+class H_Signup_2 (b.H_Base):
+    
+    @b.cookies
     def get (_s, token):
         logging.debug ('signup_2 GET handler called')
         _s.logOut()
@@ -131,10 +132,10 @@ class H_Signup_2 (bh.H_Base):
             praw = _s.request.get('password')
             user = m.User.credSignup( tokID
                                     , _s.request.get('email')
-                                    , pwdhash = utils.passwordHString (praw)
+                                    , pwdhash = u.passwordHString (praw)
                                     , forename=_s.request.get('forename')
                                     , lastname=_s.request.get('lastname')
-                                    , country = i18n.get_country_code(_s.request)
+                                    , country = i.get_country_code(_s.request)
                                     )
             if user:
                 _s.logIn (user)
@@ -147,7 +148,7 @@ class H_Signup_2 (bh.H_Base):
         _s.redirect_to ('signup')
        
 #------------------------------------   
-class H_Forgot (bh.H_Base):
+class H_Forgot (b.H_Base):
 
     def get (_s):
         _s.logOut()
@@ -155,7 +156,7 @@ class H_Forgot (bh.H_Base):
 
     def post (_s):
         em = _s.request.get ('email')
-        tokid = utils.newPasswordToken()
+        tokid = u.newPasswordToken()
         authkey = m.AuthKey.byEmail (em)
         if authkey and authkey.verified():
             authkey.token = tokid
@@ -171,7 +172,7 @@ class H_Forgot (bh.H_Base):
         logging.info('sent  url = %s', verify_url)
 
 #------------------------------------
-class H_NewPassword (bh.H_Base):
+class H_NewPassword (b.H_Base):
     '''get and post are called when 1) anon user has lost password 
                                 or  2) auth user wants to change password'''
 
@@ -186,7 +187,7 @@ class H_NewPassword (bh.H_Base):
     def get (_s, token):
         logging.debug ('H_NewPassword GET handler called')
         if not token:
-            newTok = utils.newPasswordToken()
+            newTok = u.newPasswordToken()
             return loggedInRecently(_s._serve) (_s.sess['_userID'], newTok)
 
         tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
@@ -194,7 +195,7 @@ class H_NewPassword (bh.H_Base):
             uid, oldTok = tokData
             user = m.User.byUid(uid)
             if user:
-                newTok = utils.newPasswordToken()
+                newTok = u.newPasswordToken()
                 if user.validate(oldTok, newTok):
                     return _s._serve (uid, newTok)
         _s.logOut()
@@ -209,7 +210,7 @@ class H_NewPassword (bh.H_Base):
         if not pw or pw != _s.request.get ('confirm_password'):
             _s.flash ('passwords do not match') # also do this check client side
         else:
-            token = utf8(_s.request.get ('t'))
+            token = u.utf8(_s.request.get ('t'))
             data = cryptoken.decodeToken (token, _s.app.config, 'pw2')
             if data:
                 uid, tid, ip = data
@@ -228,13 +229,13 @@ class H_NewPassword (bh.H_Base):
         _s.redirect_to ('forgot')
 
 #------------------------------------
-# class H_BadLogin (bh.H_Base):
+# class H_BadLogin (b.H_Base):
     # def get (_s):
         # logging.info ('OK login again' )
         # _s.logOut()
        
 
-    # @bh.taskqueueMethod
+    # @b.taskqueueMethod
     # def post (_s):
         # logging.info ('do bad login result' )
         # _s.logOut()
@@ -242,9 +243,9 @@ class H_NewPassword (bh.H_Base):
         # _s.redirect_to ('login')
         # _s.serve ('home.html') # ('login.html', {'wait':False})
 #------------------------------------
-# class H_Login (bh.H_Base):
+# class H_Login (b.H_Base):
 
-    # @bh.cookies
+    # @b.cookies
     # def get (_s):
         # _s.logOut()
         # _s.serve ('login.html', {'wait':False})
@@ -265,37 +266,87 @@ class H_NewPassword (bh.H_Base):
         # _s.serve ('login.html', {'wait':True})
 
 #------------------------------------
-class H_Login (bh.H_Base):
+class H_Login (b.H_Base):
 
-    @bh.cookies
+    @b.cookies
     def get (_s):
         _s.logOut()
         _s.serve ('login.html', wait=False)
 
-    @bh.rateLimit
-    def post (_s, delay=5000):
+    # @b.rateLimit
+    # def post (_s, delay=5000):
+        # em = _s.request.get('email')
+        # pw = _s.request.get('password')
+        # logging.debug('~~~~~~ ######### em=%r'%em)
+        # logging.debug('~~~~~~ ######### pw=%r'%pw)
+        # user = m.User.byCredentials (em, pw)
+        # if user:
+            # _s.logIn(user) 
+            # _s.writeResponse (mode='ok', url='secure') 
+        # else:
+            # _s.flash ('log-in failed: either the username or the password is wrong.')
+            # _s.writeResponse (mode='wait', delay=delay)
+    
+    def post (_s):
         em = _s.request.get('email')
         pw = _s.request.get('password')
         logging.debug('~~~~~~ ######### em=%r'%em)
         logging.debug('~~~~~~ ######### pw=%r'%pw)
-        user = m.User.byCredentials (em, pw)
-        if user:
-            _s.logIn(user) 
-            return _s.writeResponse (mode='ok', url='secure') 
-        _s.flash ('log-in failed: either the username or the password is wrong. Please try again or click "signUp" to register your login details.')
-        _s.writeResponse (mode='wait', delay=delay)
- 
+        
+        wait = _s.app.config['login_wait']
+        rl = b.RateLimiter()
+        if rl.ready (em, wait, _s.sess['rtt']):
+            state, user = m.User.byCredentials (em, pw)
+            if state == 'locked':
+                _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
+            elif state == 'bad':
+                _s.flash ('log-in failed: either the email or the password is wrong.')
+            elif state == 'good':
+                _s.logIn(user) 
+            else: assert False, 'byCredentials() returned unexpected state: ' + state
+            rl.state = state
+        elif rl.state == '429':
+            logging.warning('BruteForceAttack? login rate-limited for user: %s pwd: %s', em, pw)
+            _s.flash('http code: 429 Too Many Requests')
+        else:
+            assert rl.state == 'wait'
+            
+        cfg = _s.app.config['login_lock']
+        if rl.lock (em, cfg):
+            _s.flash ('Too many log-in failures: this account is now locked for a period.')
+            logging.warning('BruteForceAttack? account locked for user: %s', em)
+            user = m.User.byEmail(em) 
+            user.lockoutexpiry = u.dtExpiry (cfg.locktime)
+            user.put()
+        logging.debug('state =  %s',rl.state)
+        _s.writeResponse (mode=rl.state, delay=wait*100) # 100 converts ds to ms
+        
+# from functools import partial
+# do_four(partial(print_twice, str))
+        
+    # def authenticate(em, pw):
+        # state, user = m.User.byCredentials (em, pw)
+        # if state == 'locked':
+            # _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
+        # elif state == 'bad':
+            # _s.flash ('log-in failed: either the email or the password is wrong.')
+        # elif state == 'good':
+            # _s.logIn(user) 
+        # else: assert False, 'byCredentials() returned unexpected state: ' + state
+        # return state
+        
+    
 #------------------------------------
-class H_Logout (bh.H_Base):
+class H_Logout (b.H_Base):
 
     def get (_s):
         _s.logOut()
-        _s.redirect_to ('home')
+        _s.redirect_to ('login')
 
 #------------------------------------
-class H_Auth (bh.H_Base):
+class H_Auth (b.H_Base):
 
-    @bh.loggedIn
+    @b.loggedIn
     def get (_s, stoken=None):
         #todo use stoken from the url, as a sess token, when cookies are disabled
         #implement: in savesess() NoCookie = check when dummy? cookie is not coming back
@@ -307,9 +358,9 @@ class H_Auth (bh.H_Base):
 #------------------------------------
 from collections import Counter
 
-class H_Admin (bh.H_Base):
+class H_Admin (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
     
         users = m.User.query().fetch(projection=['country'])
@@ -326,48 +377,48 @@ class H_Admin (bh.H_Base):
         _s.serve('admin_geochart.html', params)
 
 #------------------------------------
-class H_AdminUserList (bh.H_Base):
+class H_AdminUserList (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         _s.serve('admin_users_list.html')
 
 #------------------------------------
-class H_AdminLogout (bh.H_Base):
+class H_AdminLogout (b.H_Base):
     
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         from google.appengine.api import users
         _s.redirect(users.create_logout_url(dest_url=self.uri_for('home')))
 
 #------------------------------------
-class H_AdminUserEdit (bh.H_Base):
+class H_AdminUserEdit (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def edit (_s, user_id):
         _s.serve('admin_user_edit.html')
         
-class H_AdminLogsEmails (bh.H_Base):
+class H_AdminLogsEmails (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         _s.serve('admin_logs_emails.html')
 
-class H_AdminEmailView (bh.H_Base):
+class H_AdminEmailView (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         _s.serve('admin_logs_email_view.html')
 
-class H_AdminLogsVisits (bh.H_Base):
+class H_AdminLogsVisits (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         _s.serve('admin_logs_visits.html')
 
-class H_PurgeAuthKeys (bh.H_Base):
+class H_PurgeAuthKeys (b.H_Base):
 
-   # @bh.loggedIn
+   # @b.loggedIn
     def get (_s):
         n = m.AuthKey.purge()        
         logging.info('purged %d dead AuthKeys', n)
@@ -384,20 +435,20 @@ class H_PurgeAuthKeys (bh.H_Base):
         # _s.response.write('looking for tokens <= %s<br>%s tokens deleted <br> <a href=%s>home</a>' %
                             # (pastdate, tokensToDelete, _s.uri_for('home')))
 #------------------------------------
-class H_AdminNewKeys (bh.H_Base):
+class H_AdminNewKeys (b.H_Base):
 
- #   @bh.loggedIn
+ #   @b.loggedIn
     def post (_s):
         W.addNewKeys()
 
 #------------------------------------
-class H_SendEmail (bh.H_Base):
+class H_SendEmail (b.H_Base):
     #mailgunClient = mailgun.client (wa2.get_app().config)
     
-    @bh.taskqueueMethod
+    @b.taskqueueMethod
     def post(_s):
         ka = dict(_s.request.POST.items())
-        ok = utils.sendEmail(**ka)        
+        ok = u.sendEmail(**ka)        
         if _s.app.config['log_email']:
             try:
                 m.Email.create (sent=ok, **ka)

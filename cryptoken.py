@@ -157,7 +157,7 @@ def _encode (tokentype, obj, uid=None):
     
     assert bool(uid) == (tokentype == 'auth')
     tt = _tokenTypeCode (tokentype)
-    now = utils.timeStampNow()
+    now = utils.sNow()
     if uid:                     
         # docs say length of ndb.model.id is 64 bit so assume range is C signed int64 (not C unsigned int64)
         assert uid >= -(2**63) ,'uid less than: -(2**63)'

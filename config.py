@@ -34,6 +34,17 @@ eg below for
         config ['webapp2_extras.jinja2'][''environment_args']
 '''
 from jinja_boot import set_autoescape
+from collections import namedtuple
+
+# DelayCfg = namedtuple('DelayCfg', ['delay'     # deciSeconds - minimum time between requests.
+                                  # ,'latency'   # deciSeconds - maximum time for network plus browser response
+                                  # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
+                                                #Todo: set latency value at runtime from multiple of eg a redirect
+
+LockCfg  = namedtuple('LockCfg' , ['maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
+                                  ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
+                                  ,'locktime'  # seconds - duration of lockout
+                                  ])
 
                           # seconds
 cfg={ 'maxAgeRecentLogin' : 60*10  
@@ -41,12 +52,16 @@ cfg={ 'maxAgeRecentLogin' : 60*10
     , 'maxAgePasswordTok' : 60*60  
     , 'maxAgePassword2Tok': 60*60  
     
-    , 'loginDelay'        : 5
-    , 'pepper'            : None
-    , 'HighSecurity'      : False
+    , 'login_wait':          10     # deciSeconds - minimum time between requests.
+    , 'login_lock': LockCfg ( 3      #maxbad
+                            , 60*1   #period
+                            , 60*3   #locktime
+                            )
+    , 'pepper'            : None          
     , 'log_email'         : True
     , 'email_developers'  : True
     , 'developers'        : (('Santa Klauss', 'snowypal@northpole.com'))
+    
  
     # add-to/update the default_config at  \webapp2_extras\jinja2.py
     , 'webapp2_extras.jinja2':  { 'template_path'   : [ 'template' ]

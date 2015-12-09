@@ -3,7 +3,7 @@ import logging
 from google.appengine.api.urlfetch_errors import DownloadError
 from google.appengine.api import urlfetch
 from google.appengine.api import memcache
-from webapp2_extras import i18n
+from webapp2_extras import i18n as i
 from babel import Locale
 from utils import utf8
 
@@ -16,6 +16,9 @@ AcceptLang_REPattern = r"([a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})?)\s*(;\s*q\s*=\s*((1|
 #                        | primary-tag | |    sub-tag    |                  |    q-value      | 
 # Capture 2 groups:     (language-tag) and (qvalue)
 # group number:          1                  4
+
+def i18n():
+    return i.get_i18n()
 
 def parse_accept_language_header(string, pattern=AcceptLang_REPattern):
     """ Parse a dict from an Accept-Language header string
@@ -128,6 +131,7 @@ def set_locale(rh, tag=None):
     # Also preferred language should be on registration form defaulting to current language.
         
     def getLocale(rh, tag):
+        ##todo: review all this fn code
         """ Retrieve the locale tag from a prioritized list of sources
         NB We cannot return None because there has to be a locale - clearly UI text has to be in some language or other.
         """
@@ -136,7 +140,6 @@ def set_locale(rh, tag=None):
             # 1. use tag param
             if tag in localeTags:
                 return tag
-            
             # 2. retrieve locale tag from url query string
             tag = rh.request.get("hl", None)
             if tag:
@@ -144,37 +147,30 @@ def set_locale(rh, tag=None):
                 del qs_items['hl']  # remove the hl item from the qs - it has now been processed 
             if tag in localeTags:
                 return tag
-                
             # 3. retrieve locale tag from cookie
             tag = rh.request.cookies.get('hl', None)
             if tag in localeTags:
                 return tag
-                
             # 4. retrieve locale tag from accept language header
             tag = get_locale_from_accept_header(rh.request, localeTags)
             if tag:
                 return tag
-            
             # 5. detect locale tag from IP address location
             ctry = getRequestLocation(rh.request, 'Country')
             if ctry:
                 tag = Locale.negotiate(ctry, localeTags)
                 if tag:
                     return tag
-               
             # 6. use the 1st member of localeTags
             tag = localeTags[0]
             if tag:
                 return tag
-         
             # 7. Use this locale if all attempts above have failed.
         return 'en' # NB 'en' is chosen simply because the string literals and comments in this app happen to be in English. Its not because of a bias.
             
     tag = getLocale(rh, tag)
-    i18n.get_i18n().set_locale(tag)
-    
-    # save locale tag in cookie with 26 weeks expiration (in seconds)
-    rh.response.set_cookie('hl', tag, max_age = SixMonths)
+    i18n().set_locale(tag)
+    rh.response.set_cookie('hl', tag, max_age = SixMonths) # save locale tag in cookie with 26 weeks expiration (in seconds)
     return tag
   
     

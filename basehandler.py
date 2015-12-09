@@ -15,8 +15,8 @@ from functools import wraps
 from jinja2 import Template
 from session import SessionVw
 import cryptoken
-import i18n
-import utils
+import i18n as i
+import utils as u
 from utils import utf8
 from models import User
 from jinja_boot import Jinja
@@ -89,27 +89,28 @@ def rateLimit (fn):
 #...................................-
     
 def cookies (fn):
-    """ checks that cookies are enabled in the browser"""
+    """ checks that the cookie is found
+        - some failure reasons:
+          1) there isnt one because: a) its the 1st time this app has been run on the browser
+                                     b) the user has deleted our cookie
+          2) it cant be read because a) the user has disabled cookies on the browser
+                                     b) the secure attribute is set but the channel is insecure  
+          3) the user agent does not support cookies eg a webcrawler
+        redirecting to 'nocookie' will test again, and for case 1) or 2) it will work this time
+        """
     def _cookies (h, *pa, **ka):        # h is for handler
         assert isinstance(h.sess, SessionVw)  
         if h.sess: 
-            return fn (h, *pa, **ka)    #ok, proceed   
+            return fn (h, *pa, **ka)    #ok theres a cookie, so proceed   
         
-        # no browser cookie was read - possible reasons:
-        #   1) there isnt one because: a) its the 1st time this app has been run on the browser
-        #                              b) the user has deleted our cookie
-        #   2) it cant be read because a) the user has disabled cookies on the browser
-        #                              b) the secure attribute is set but the channel is insecure  
-        #   3) the user agent does not support cookies eg a webcrawler
-        # redirecting to 'nocookie' will test again, and for case 1) or 2) it will work this time
-        
-        h.sess['lang'] = 'en'
-        
+        # no browser cookie so try again with redirect
+        h.sess['lang'] = i.i18n().locale
+        h.sess['ts'] = u.msNow()
         url = h.request.path_url
         qs  = h.request.query_string
         if qs:
             url += u'?' + qs
-        h.redirect_to('nocookie', nextUrl=url)
+        h.redirect_to('nocookie', nextUrl=url) # handler will test again
 
     return _cookies
 
@@ -155,6 +156,126 @@ def taskqueueMethod (handler):
     return _taskqueue
 
 #------------------------------------
+# NB 'bad' in context of the RateLimiter means a request will count towards the lockout count.
+# The handler determines which requests are 'bad'. 
+# Only failed logins are 'bad' requests to rate-limited login handler 
+#... but all requests to rate-limited forgot handler and signup handler are 'bad' 
+# because any rapid sequence of requests to those handlers is suspect
+
+## todo: separate wait code from lock code
+## forgot and signup handlers need to wait on the email but lock on the ip 
+class RateLimiter (object):
+
+    def __init__(_s):
+        _s.state = None
+        _s.mc = memcache.Client()
+        
+    def ready (_s, id, delay, rtt):
+        now = u.dsNow() # deciseconds
+        key = 'W:'+id
+        expiry = _s.mc.get (key)
+        logging.debug('expiry = %r',expiry)
+        if expiry:
+            _s.mc.delete (key)
+            if expiry <= now:
+                _s.state = 'go' #handler:-> 'good' | 'bad' | 'locked'
+                return True
+            #else:
+            _s.state = '429'
+        else:
+            _s.state = 'wait'
+            # lifespan = delay+maxLatency. To get maxLatency (ds) from rtt (ms) - do nothing! IE maxLatency == rtt
+            # ... because rtt/100 to convert ms to ds, but we also rtt*100 (say) to get a high upper limit   
+            _s.mc.set (key, now+delay, delay+rtt)
+        return False
+        
+    def lock (_s, id, cfg):
+        assert _s.state, 'Must call ready() before calling lock()'
+        key = 'L:'+id
+        nBad = _s.mc.get (key)
+        if nBad:
+            if _s.state == 'good':
+                _s.mc.delete (key)
+            elif _s.state == 'bad':   
+                if nBad < cfg.maxbad:
+                    logging.debug('count = %d',nBad)
+                    _s.mc.incr (key)
+                else: 
+                    logging.debug('count = %d Lock!',nBad)
+                    _s.mc.delete (key)
+                    return True # lock account in ndb
+        else:
+            if _s.state == 'bad':
+                _s.mc.set (key, 1, cfg.period)
+        return False
+
+        
+     # def __init__(_s, id, cfg, ip=None):
+        # _s.now = u.sNow() # secs todo: do we want finer resolution?
+        # _s.id = id
+        # _s.ip = ip
+        # _s.start = _s.now
+        # _s.count = 0
+        # _s.cfg = cfg
+        # _s.state = 'wait'
+        # _s.client = memcache.Client()
+        # data = _s.client.gets (id)
+        # if data:
+            # if ip:
+                # expiry = data
+                # data2 = _s.client.gets (ip)
+                # if data2:
+                    # _s.start, _s.count = data2
+            # else:
+                # expiry, _s.start, _s.count = data
+            # logging.debug('data')
+            # logging.debug('expiry = %r',expiry)
+            # if expiry:
+                # if expiry <= _s.now:
+                    # _s.state = 'go'
+                # else:
+                    # _s.state = '429'
+        # else:
+            # logging.debug('no data')
+            
+    # def lockOut (_s):
+        # lockout = False
+        # if _s.state == 'good':
+            # _s.count = 0
+        # elif _s.state == 'bad':   
+            # if _s.start + _s.cfg.period < _s.now: # period has expired
+                # _s.count = 0
+            # if _s.count == 0:
+                # _s.start = _s.now
+            # if _s.count < _s.cfg.maxbad:
+                # _s.count += 1
+                # logging.debug('count = %d',_s.count)
+            # else:  # lock account in ndb
+                # _s.count = 0
+                # lockout = True
+                # logging.debug('count = %d Lock!',_s.count)
+        
+        # if ip:
+            # _s.client.set (_s.ip, (_s.start, _s.count))
+        # if _s.state == 'wait':
+            # logging.debug('set expiry')
+            # expiry = _s.now + _s.cfg.delay
+            # data = expiry if _s.ip else (expiry, _s.start, _s.count)
+            # _s.client.set (_s.id, data)
+        # else:
+            # logging.debug('no expiry')
+            # data = None if _s.ip else (None, _s.start, _s.count)
+            # retry = _s.cfg.retry
+            # while retry: 
+                # if _s.client.cas (_s.id, data):
+                    # break
+                # retry -= 1
+            # else:
+                # logging.warning('Contention! cas() failed for user: %s ', id)
+                # _s.client.set (_s.id, data)
+        # return lockout
+
+#------------------------------------
 class ViewClass:
     """ ViewClass to insert variables into the template.
         ViewClass is used in H_Base to promote variables automatically that can be used in jinja2 templates.
@@ -170,7 +291,7 @@ class H_Base (wa2.RequestHandler):
     def __init__(_s, request, response):
         _s.initialize(request, response)
         _s.view = ViewClass()
-        _s.localeStrings = i18n.getLocaleStrings(_s) # getLocaleStrings() must be called before setting path_qs in render_template()
+        _s.localeStrings = i.getLocaleStrings(_s) # getLocaleStrings() must be called before setting path_qs in render_template()
 
     def logIn (_s, user):
         _s.sess.logIn (user, _s.request.remote_addr)
@@ -295,9 +416,9 @@ class H_Base (wa2.RequestHandler):
             
         # sender = params.get('sender').strip()
         ##todo this block is all about checking and setting static data so run it at startup eg in main.py 
-        # if not utils.validEmail(sender):
+        # if not u.validEmail(sender):
             # cs = _s.app.config.get('contact_sender')
-            # if utils.validEmail(cs):
+            # if u.validEmail(cs):
                 # sender = cs
             # else:
                 # from google.appengine.api import app_identity

@@ -5,7 +5,7 @@
 import logging
 import cryptoken
 import utils
-from models import User, CredentialsError 
+from models import User
 
 def loadConfig(app):
 
@@ -165,7 +165,7 @@ class SessionVw (_UpdateDictMixin, dict):
 
     def logIn (_s, user, ip):
         _s['_userID'] = user.id()
-        _s['_logInTS']= utils.timeStampNow()
+        _s['_logInTS']= utils.sNow()
         _s['_sessIP'] = ip
        # _s['_sessID'] = sid = utils.newSessionToken()
        # user.token = sid

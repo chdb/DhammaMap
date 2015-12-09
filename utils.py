@@ -3,11 +3,11 @@
 #from __future__ import unicode_literals
 
 import logging
-import time
+import time as t
 import os
 import base64
 from webapp2_extras import security
-import datetime as dt
+import datetime as d
 import config
 
 def utf8 (u):
@@ -52,20 +52,29 @@ def utf8 (u):
     # def __instancecheck__(_s, inst):
         # return isinstance(inst, _s._decorated)
 
-def timeStampNow():
-    return int(time.time()) # seconds since the epoch.  time() returns float with system-dependent resolution - some only resolve to nearest second
+def sNow():
+    return int(t.time()) # seconds since epoch.  time() returns float with system-dependent resolution - some only resolve to nearest second
 
+def msNow():
+    return int(t.time()*1000) # milliSeconds since epoch.  
+
+def dsNow():
+    return int(t.time()*10) # deciSeconds since epoch.  
+
+def dtExpiry(secs):
+    return d.datetime.now() + d.timedelta (seconds=secs)
+    
 def validTimeStamp (timeStamp, maxAge):
     assert type (timeStamp) is int
     assert maxAge is None or type (maxAge) is int
     if maxAge is None:
         return True
-    return timeStampNow() - timeStamp <= maxAge
+    return sNow() - timeStamp <= maxAge
 
-def inCfgPeriod (datetime, cfg_field):
-    t = config.config[cfg_field]
-    end = dt.datetime.now() - dt.timedelta(seconds=t)
-    return datetime < end
+#def inCfgPeriod (datetime, period):
+    #t = config.config[cfg_field]
+#    end = d.datetime.now() - d.timedelta(seconds=period)
+#    return datetime < end
 
 # def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare_digest
     # r = _sameStr (a, b)
@@ -82,11 +91,14 @@ def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare
     A naive implementation ie a == b is subject to timing attacks, because the execution time is
     roughly proportional to the length of the common substring. 
     """
+    #logging.debug('a: %s', a)
+    #logging.debug('b: %s', b)
+    if len(a) != len(b):
+        return False
     r = 0
     for x, y in zip(a, b):
         r |= ord(x) ^ ord(y)    
-    if len(a) != len(b):
-        return False
+        #logging.debug('r: %s', r)
     return r == 0
 
 def newToken():
@@ -104,12 +116,6 @@ def newPasswordToken ():
     
 def newSessionToken ():
     return 'auth' + newToken()
-    
-def passwordHString (praw):
-    return security.generate_password_hash( praw
-                                          , method='sha1'
-                                          , length=12   #num bytes of salt to generate - unless method is 'plain' when salt is ''
-                                          , pepper=None)
                                           
 import mailgun   #  if poss we should import mailgun in only one place   
 from google.appengine.api import mail      
@@ -139,21 +145,39 @@ def sendEmail (**ka):
         logging.error('Unable to send email: %r' % e)
         return False
 
-def hashPassword (praw, method, salt):   
-    return security.hash_password ( praw
-                                  , method
-                                  , salt
-                                  , pepper=None)
+        
+##todo - instead!!!!!
+# from libs.passlib.hash import bcrypt
+# bcrypt.encrypt("password", rounds=8)
 
-def checkPassword(uph, praw):
+# bcrypt.verify("password", h)
+    
+def passwordHString (praw):
+    return security.generate_password_hash( praw
+                                          , method='sha1' ##Todo: Very Bad!! Not secure for password hashing! Use bcrypt!
+                                          , length=12   #num bytes of salt to generate - unless method is 'plain' when salt is ''
+                                          , pepper=None)
+# def hashPassword (praw, method, salt):   
+    # return security.hash_password ( praw
+                                  # , method
+                                  # , salt
+                                  # , pepper=None)
+
+def badPassword(uph, praw):
+    #logging.debug('uph = %s praw = %s', uph, praw)
     if uph.count('$') != 2:
         logging.warning('Checking creds - hashStr: "%s" has an invalid format.', uph) 
     else:
         hash, method, salt = uph.split('$', 2)
-        ph = hashPassword (praw, method, salt)
+        ph = security.hash_password ( praw
+                                  , method
+                                  , salt
+                                  , pepper=None)
+        #logging.debug('hash = %s', hash)
+        #logging.debug(' ph  = %s', ph)
         if sameStr (ph, hash):
-            return True
-    return False
+            return False
+    return True
 
 #recursive version of dict.update    
 # import collections
