@@ -41,29 +41,43 @@ from collections import namedtuple
                                   # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
                                                 #Todo: set latency value at runtime from multiple of eg a redirect
 
-LockCfg  = namedtuple('LockCfg' , ['name'      #
+LockCfg  = namedtuple('LockCfg' , ['emLock'      #
+                                  ,'ipLock'    # 
+                                  ,'eiLock'    # 
                                   ])
 
-LockCfg  = namedtuple('LockCfg' , ['name'      # string - the monitor id
-                                  ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
-                                  ,'bGoodReset'# boolean - whether reset occurs for good login
-                                  #,'bDiffList' # boolean - whether uses difference list
-                                  ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
-                                  ,'locktime'  # seconds - duration of lockout
-                                  ])
+LockCfg  = namedtuple('LockSubCfg', ['name'      # string - the monitor id
+                                    ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
+                                    ,'bGoodReset'# boolean - whether reset occurs for good login
+                                    #,'bDiffList' # boolean - whether uses difference list
+                                    ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
+                                    ,'locktime'  # seconds - duration of lockout
+                                    ])
                           # seconds
 cfg={ 'maxAgeRecentLogin' : 60*10  
     , 'maxAgeSignUpTok'   : 60*60*24
     , 'maxAgePasswordTok' : 60*60  
     , 'maxAgePassword2Tok': 60*60  
     
-    , 'login_wait':          10     # deciSeconds - minimum time between requests.
-    , 'login_lock': LockCfg ('testname'      #name
-                            , 3      #maxbad
-                            , True   #bGoodReset
-                            , 60*1   #period
-                            , 60*3   #locktime
-                            )
+    , 'login_wait': 10     # deciSeconds - minimum time between requests.
+    , 'login_lock':LockCfg (LockSubCfg  ('email & ip'      #name
+                                        , 3      #maxbad
+                                        , True   #bGoodReset
+                                        , 60*1   #period
+                                        , 60*3   #locktime
+                                        ) 
+                            LockSubCfg  ('email'      #name
+                                        , 3      #maxbad
+                                        , True   #bGoodReset
+                                        , 60*1   #period
+                                        , 60*3   #locktime
+                                        )
+                            LockSubCfg  ('ip'      #name
+                                        , 3      #maxbad
+                                        , True   #bGoodReset
+                                        , 60*1   #period
+                                        , 60*3   #locktime
+                            )           )
     , 'pepper'            : None          
     , 'log_email'         : True
     , 'email_developers'  : True
