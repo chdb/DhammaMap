@@ -1,16 +1,12 @@
 test
-*.py
 *.py[cod]
 .project
 .pydevproject
 *.bak
-#/*.py
 *.egg
 *.egg-info
 *.dist-info
 old
-#test
 test.py
-#..\test.py
 
 
