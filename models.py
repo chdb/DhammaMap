@@ -4,7 +4,7 @@
 
 from google.appengine.ext import ndb
 import logging
-import utils
+import utils as u
 import config
 import datetime as d
 # class CredentialsError (Exception):
@@ -24,6 +24,26 @@ import datetime as d
     
 # class AlreadyExistsError (Exception):
     # '''this authid is already taken'''
+#from socket import inet_aton
+    
+class BadIP (ndb.Model):
+  #  ip = ndb.StringProperty()
+    lockoutExpiry = ndb.DateTimeProperty(default=0)
+    
+    @classmethod
+    def lock (_C, ip, locktime):
+        exp = u.dtExpiry (locktime)
+        badIp = find (ip)
+        if badIp:
+            badIp.lockoutExpiry = exp
+        else: 
+            badIp = _C(lockoutExpiry=exp, id=ip)
+        badIp.put()
+        
+    @classmethod
+    def find (_C, ip):
+        return _C.get_by_id (ip)
+    
 
 class AuthKey (ndb.Model):
     """A model to implement a many-to-one relationship from unique stringIDs (authID-strings) to User entities: 
@@ -128,7 +148,7 @@ class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
 
     updated      = ndb.DateTimeProperty (auto_now=True)
-    lockoutexpiry = ndb.DateTimeProperty()
+    lockoutExpiry = ndb.DateTimeProperty(default=0)
     authIDs = ndb.StringProperty   (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
     pwdhash = ndb.StringProperty() # Hashed password string. NB not a required prop because third party authentication doesn't use password.
    # lastIP  = ndb.StringProperty()
@@ -173,7 +193,7 @@ class UserBase (ndb.Model):
         # if not user:
             # logging.warning('not found email: %s', email)
         # return user
-         
+
     # @classmethod
     # def byFedID (_C, fedID):
         # assert ':' in fedID
@@ -216,40 +236,52 @@ class UserBase (ndb.Model):
         # return None
 
     @classmethod
-    def byCredentials (_C, email, praw):
+    def lock (_C, email, locktime):
+        user = _C.byEmail(email) 
+        user.lockoutexpiry = u.dtExpiry (locktime)
+        user.put()
+
+    @classmethod
+    def byCredentials (_C, email, praw, ip):
+        badIp = LockedIP.find(ip)
+        dt = d.datetime.now()
+        if badIp:
+            if badIp.lockoutExpiry > dt:
+                logging.warning ('locked out ip: %s', ip)
+                return 'locked', None
         user = _C.byEmail (email)  
         if user:
-            #p = config.cfg['login'].period
-            if user.lockoutexpiry \
-            and user.lockoutexpiry > d.datetime.now():
-                logging.warning ('locked out: %s', email)
+            if user.lockoutExpiry > dt:
+                logging.warning ('locked out email: %s', email)
                 return 'locked', None
-            if utils.badPassword (user.pwdhash, praw):      
-                logging.debug('wrong praw: %s', praw)  
+            if u.badPassword (user.pwdhash, praw):      
+                logging.debug('wrong praw: %s', praw)
                 return 'bad', None
-        return 'good', user
+            return 'good', user
+        logging.debug('wrong email: %s', email)
+        return 'bad', None
         
     @classmethod
     def byEmail (_C, email):
         '''use with caution - no password needed'''
         authID = AuthKey.emailID (email)
         logging .debug('>>>>>>>>>>>>> authID: %r'% authID)
-        return User.byAuthID (authID)  
+        return _C.byAuthID (authID)  
                 
     # def _byCredentials (_s, email, praw):     
-        # if utils.checkPassword(_s.pwdhash, praw):            
+        # if u.checkPassword(_s.pwdhash, praw):            
              # return _s if _s.isValidated() else None # user has not validated
         # raise CredentialsError # invalid pw
     
     def sameToken (_s, oldTok):
-        if utils.sameStr(_s.token, oldTok):
+        if u.sameStr(_s.token, oldTok):
             return True
         logging.debug ('tokens dont match: user.token: %s', _s.token)
-        logging.debug ('tokens dont match: sess.token: %s', oldTok)
+        logging.debug ('tokens dont match: ssn.token: %s', oldTok)
         return False
 
     def sameIP (_s, ip):
-        if utils.sameStr(_s.lastIP, ip):
+        if u.sameStr(_s.lastIP, ip):
             return True
         logging.debug ('ip doesnt match: ip1: %s', _s.lastIP)
         logging.debug ('ip doesnt match: ip2: %s', ip)
@@ -271,7 +303,7 @@ class UserBase (ndb.Model):
         return False
         
     def setPassword (_s, praw):
-        _s.pwdhash = utils.passwordHString (praw)
+        _s.pwdhash = u.passwordHString (praw)
         _s.modified = True
             
     def setToken (_s, tokid):
@@ -293,7 +325,7 @@ class User (UserBase):
         # """
         
         
-        # ph = utils.passwordHString (praw)
+        # ph = u.passwordHString (praw)
          
         # authID = User.ownAuthID(id)
         # user = User( authIDs=[authID]
@@ -325,13 +357,13 @@ class User (UserBase):
 
 
 class Email (ndb.Model):
-    sender = ndb.StringProperty (required=True)
-    to     = ndb.StringProperty (required=True)
-    subject= ndb.StringProperty (required=True)
-    body   = ndb.TextProperty   (required=True)  
-    html   = ndb.BooleanProperty(required=True)   # whether body is html 
-    sent   = ndb.BooleanProperty(required=True)
-    when   = ndb.DateTimeProperty (auto_now_add=True)
+    sender = ndb.StringProperty  (required=True)
+    to     = ndb.StringProperty  (required=True)
+    subject= ndb.StringProperty  (required=True)
+    body   = ndb.TextProperty    (required=True)  
+    html   = ndb.BooleanProperty (required=True)   # whether body is html 
+    sent   = ndb.BooleanProperty (required=True)
+    when   = ndb.DateTimeProperty(auto_now_add=True)
  
     @classmethod
     def create(_C, **ka):

@@ -71,7 +71,7 @@ def rateLimit (fn):
             assert pa[0] == '/ajax'
             h.flash('http code: 429 Too Many Requests')
             return h.writeResponse (mode='abort')        
-        return h.abort(429)         
+        return h.abort(429) #'Too Many Requests'
     return wrapper
     
     # assert len(pa1) == 1 # decorator takes one optional arg 
@@ -99,13 +99,13 @@ def cookies (fn):
         redirecting to 'nocookie' will test again, and for case 1) or 2) it will work this time
         """
     def _cookies (h, *pa, **ka):        # h is for handler
-        assert isinstance(h.sess, SessionVw)  
-        if h.sess: 
+        assert isinstance(h.ssn, SessionVw)  
+        if h.ssn: 
             return fn (h, *pa, **ka)    #ok theres a cookie, so proceed   
         
-        # no browser cookie so try again with redirect
-        h.sess['lang'] = i.i18n().locale
-        h.sess['ts'] = u.msNow()
+        # no browser cookie so try again with 2 redirects: 1st to no-cookie, 2nd back to original url 
+        h.ssn['lang'] = i.i18n().locale
+        h.ssn['ts'] = u.msNow()
         url = h.request.path_url
         qs  = h.request.query_string
         if qs:
@@ -119,7 +119,7 @@ def loggedIn (fn):
     """ Checks that there's an auth user. """
     @cookies
     def _loggedin (h, *pa, **ka):
-        if h.sess.isLoggedIn (h.user, h.request.remote_addr):
+        if h.ssn.isLoggedIn (h.user, h.request.remote_addr):
             logging.info('XXXXXXXXXXXXX ok - logIn proceed ')
             return fn (h, *pa, **ka)    #ok, proceed   
         h.redirect_to ('login', ajax='a')         # fail
@@ -133,7 +133,7 @@ def loggedInRecently (fn):
     """
     @loggedIn 
     def _loggedinRecently (h, *pa, **ka):
-        if h.sess.hasLoggedInRecently (h.app.config ['maxAgeRecentLogin']):
+        if h.ssn.hasLoggedInRecently (h.app.config ['maxAgeRecentLogin']):
             return fn (h, *pa, **ka)   #ok, proceed      
         h.redirect_to ('login', ajax='a')        #fail
 
@@ -162,118 +162,86 @@ def taskqueueMethod (handler):
 #... but all requests to rate-limited forgot handler and signup handler are 'bad' 
 # because any rapid sequence of requests to those handlers is suspect
 
-## todo: separate wait code from lock code
 ## forgot and signup handlers need to wait on the email but lock on the ip 
 class RateLimiter (object):
-
-    def __init__(_s):
+                
+    def __init__(_s, em, ip, cfg):
         _s.state = None
+        _s.ei = em + ip
         _s.mc = memcache.Client()
-        
-    def ready (_s, id, delay, rtt):
+        _s.delay = 0 # ds
+        _s.monitors = []
+        if cfg.emLock:
+            _s.monitors.append(('L:'+ em, ip, cfg.emLock))
+        if cfg.ipLock:
+            _s.monitors.append(('L:'+ ip, em, cfg.ipLock))
+        if cfg.eiLock:
+            _s.monitors.append(('L:'+ _s.ei, None, cfg.eiLock))
+        for key, diff, cf in _s.monitors:
+            val = _s.mc.get (key)
+            if val:
+                nBad = _s._nBad (val,diff) [0]
+                _s.delay += cf.delayFn(nBad)
+    
+    def _nBad (_s, val, diff):
+        dset = val[0]    if diff else None # set of distinct emails or ips
+        nBad = len(dset) if diff else val  # number of bad login attempts filtered under this key
+        return nBad, dset
+            
+    def ready (_s, minDelay, rtt):
+        _s.delay += minDelay
         now = u.dsNow() # deciseconds
-        key = 'W:'+id
+        key = 'W:'+ _s.ei
         expiry = _s.mc.get (key)
         logging.debug('expiry = %r',expiry)
         if expiry:
             _s.mc.delete (key)
             if expiry <= now:
-                _s.state = 'go' #handler:-> 'good' | 'bad' | 'locked'
-                return True
-            #else:
+                _s.state = 'go' 
+                return True #handler state 'go':-> 'good' | 'bad' | 'locked'
             _s.state = '429'
-        else:
-            _s.state = 'wait'
-            # lifespan = delay+maxLatency. To get maxLatency (ds) from rtt (ms) - do nothing! IE maxLatency == rtt
-            # ... because rtt/100 to convert ms to ds, but we also rtt*100 (say) to get a high upper limit   
-            _s.mc.set (key, now+delay, delay+rtt)
-        return False
-        
-    def lock (_s, id, cfg):
-        assert _s.state, 'Must call ready() before calling lock()'
-        key = 'L:'+id
-        nBad = _s.mc.get (key)
-        if nBad:
-            if _s.state == 'good':
-                _s.mc.delete (key)
-            elif _s.state == 'bad':   
-                if nBad < cfg.maxbad:
-                    logging.debug('count = %d',nBad)
-                    _s.mc.incr (key)
-                else: 
-                    logging.debug('count = %d Lock!',nBad)
-                    _s.mc.delete (key)
-                    return True # lock account in ndb
-        else:
-            if _s.state == 'bad':
-                _s.mc.set (key, 1, cfg.period)
-        return False
+        else: # key not found 
+            _s.state = 'wait' 
+            exp = _s.delay+rtt # exp = relative expiry = delay+maxLatency. For maxLatency(ds), rtt * 100 (say) gives a v rough upper limit 
+            _s.mc.set (key, now+_s.delay, exp)  # ... but because rtt / 100 to convert ms to ds, maxLatency(ds) = rtt(ms) [!] - IE do nothing!
+        return False                                   
 
-        
-     # def __init__(_s, id, cfg, ip=None):
-        # _s.now = u.sNow() # secs todo: do we want finer resolution?
-        # _s.id = id
-        # _s.ip = ip
-        # _s.start = _s.now
-        # _s.count = 0
-        # _s.cfg = cfg
-        # _s.state = 'wait'
-        # _s.client = memcache.Client()
-        # data = _s.client.gets (id)
-        # if data:
-            # if ip:
-                # expiry = data
-                # data2 = _s.client.gets (ip)
-                # if data2:
-                    # _s.start, _s.count = data2
-            # else:
-                # expiry, _s.start, _s.count = data
-            # logging.debug('data')
-            # logging.debug('expiry = %r',expiry)
-            # if expiry:
-                # if expiry <= _s.now:
-                    # _s.state = 'go'
-                # else:
-                    # _s.state = '429'
-        # else:
-            # logging.debug('no data')
-            
-    # def lockOut (_s):
-        # lockout = False
-        # if _s.state == 'good':
-            # _s.count = 0
-        # elif _s.state == 'bad':   
-            # if _s.start + _s.cfg.period < _s.now: # period has expired
-                # _s.count = 0
-            # if _s.count == 0:
-                # _s.start = _s.now
-            # if _s.count < _s.cfg.maxbad:
-                # _s.count += 1
-                # logging.debug('count = %d',_s.count)
-            # else:  # lock account in ndb
-                # _s.count = 0
-                # lockout = True
-                # logging.debug('count = %d Lock!',_s.count)
-        
-        # if ip:
-            # _s.client.set (_s.ip, (_s.start, _s.count))
-        # if _s.state == 'wait':
-            # logging.debug('set expiry')
-            # expiry = _s.now + _s.cfg.delay
-            # data = expiry if _s.ip else (expiry, _s.start, _s.count)
-            # _s.client.set (_s.id, data)
-        # else:
-            # logging.debug('no expiry')
-            # data = None if _s.ip else (None, _s.start, _s.count)
-            # retry = _s.cfg.retry
-            # while retry: 
-                # if _s.client.cas (_s.id, data):
-                    # break
-                # retry -= 1
-            # else:
-                # logging.warning('Contention! cas() failed for user: %s ', id)
-                # _s.client.set (_s.id, data)
-        # return lockout
+    def lock (_s):
+        '''Updates the monitors which are configured for this RateLimiter. 
+        Return None or if a lock is triggered, the sub-cfg for it.  
+        If more than one is triggered returns only last one in cfg.
+        '''
+        assert _s.state, 'Must call ready() before calling lock()'
+        good = _s.state == 'good'
+        bad  = _s.state == 'bad'
+        lockNow = None
+        if good or bad:
+            for key, diff, cfg in _s.monitors:
+                val = _s.mc.get (key)
+                if val:
+                    nBad, dset = _s._nBad (val,diff)
+                    if good:
+                        if cfg.bGoodReset:
+                            _s.mc.delete (key)
+                    elif bad:   
+                        if nBad < cfg.maxbad:
+                            logging.debug('count = %d',nBad)
+                            if diff:
+                                if diff not in dset:
+                                    dset.add(diff)
+                                    exp = val[1]
+                                    _s.mc.set (key, val, exp) # keep same exp time
+                            else: _s.mc.incr (key)
+                        else: 
+                            logging.debug('count = %d Lock!',nBad)
+                            _s.mc.delete (key)
+                            lockNow = cfg # lock the account in ndb
+                else:
+                    if bad:
+                        exp = u.dsNow() + cfg.period #need use absolute time
+                        val = (set([diff]), exp) if diff else 1 # diff set needs a tuple so it knows the expiry 
+                        _s.mc.set (key, val, exp)
+        return lockNow
 
 #------------------------------------
 class ViewClass:
@@ -294,18 +262,18 @@ class H_Base (wa2.RequestHandler):
         _s.localeStrings = i.getLocaleStrings(_s) # getLocaleStrings() must be called before setting path_qs in render_template()
 
     def logIn (_s, user):
-        _s.sess.logIn (user, _s.request.remote_addr)
+        _s.ssn.logIn (user, _s.request.remote_addr)
          
     def logOut (_s):
-        _s.sess.logOut (_s.user)
+        _s.ssn.logOut (_s.user)
         
     # @webapp2.cached_property
     # def jinja2 (_s):
         # return jinja2.get_jinja2 (factory=jinja_boot.jinja2_factory, app=_s.app)
 
     @wa2.cached_property
-    def sess (_s):
-        """ Shortcut to access the current sess."""
+    def ssn (_s):
+        """ Shortcut to access the current session."""
         sn = _s.request.registry['session'] = SessionVw(_s)
         return sn
 
@@ -315,32 +283,32 @@ class H_Base (wa2.RequestHandler):
         try: # csrf protection
             if _s.request.method == "POST" \
             and not _s.request.path.startswith('/taskqueue'):
-                token = _s.sess.get('_csrf_token')
+                token = _s.ssn.get('_csrf_token')
                 if not token \
                 or token != _s.request.get('_csrf_token'):
-                    _s.abort(403)
+                    _s.abort(403) # 'Forbidden'
             wa2.RequestHandler.dispatch (_s) # Dispatch the request.this is needed for wa2 sessions to work
         finally:
             u = _s.user
             if u and u.modified:
                 u.put() # lazy put() to not put user more than once per request 
-            _s.sess.save() # Save sess after every request
+            _s.ssn.save() # Save ssn after every request
         # except: # an exception in TQ handler causes the TQ to try again which loops
             # logging.exception('unexpected exception in dispatch')
     
     @wa2.cached_property
     def user (_s):
-        uid = _s.sess.get('_userID')
+        uid = _s.ssn.get('_userID')
         if uid:
             return User.byUid (uid)
         return None
 
     def flash(_s, msg):
         #logging.info('>>>>>>>>>>>>> msg: %r' % msg)  
-        _s.sess.addFlash (msg)
+        _s.ssn.addFlash (msg)
          
     def get_fmessages (_s):
-        f = _s.sess.getFlashes()
+        f = _s.ssn.getFlashes()
         #logging.info('>>>>>>>>>>>>> ok added fmsgs: %r' % f)  
         fmsgs_tmpl = Template ("""  {%- if fmessages -%}
                                         <ul>
@@ -351,7 +319,7 @@ class H_Base (wa2.RequestHandler):
                                         <hr>
                                      {%- endif -%}
                                """)
-        fmsgs_html = fmsgs_tmpl.render (fmessages= f) # _s.sess.getFlashes())
+        fmsgs_html = fmsgs_tmpl.render (fmessages= f) # _s.ssn.getFlashes())
         # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' % fmsgs_html)  
         # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' %  str(fmsgs_html))  
         return utf8(fmsgs_html)
@@ -361,7 +329,7 @@ class H_Base (wa2.RequestHandler):
         ka['locale_strings'] = _s.localeStrings
         # if not params.get('wait'): # if there's no 'wait' or its set to False
         
-        #fmsgs_html = fmsgs_tmpl.render (fmsgs=_s.sess.get_flashes())
+        #fmsgs_html = fmsgs_tmpl.render (fmsgs=_s.ssn.get_flashes())
         ka['fmsgs'] = _s.get_fmessages()
         # logging.info('>>>>>>>>>>>>>  added fmsgs: %r' % f)
         # logging.info('>>>>>>>>>>>>>  serving %s page ', filename)

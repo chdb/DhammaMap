@@ -73,22 +73,25 @@ class _UpdateDictMixin (object):
 
     __setitem__= calls_update('__setitem__')
     __delitem__= calls_update('__delitem__')
-    clear      = calls_update('clear')
-    pop        = calls_update('pop')
-    popitem    = calls_update('popitem')
-    setdefault = calls_update('setdefault')
-    update     = calls_update('update')
+    clear      = calls_update('clear'      )
+    pop        = calls_update('pop'        )
+    popitem    = calls_update('popitem'    )
+    setdefault = calls_update('setdefault' )
+    update     = calls_update('update'     )
     del calls_update
 
 class SessionVw (_UpdateDictMixin, dict):
-    """ Owing to statelessness of http, we cannot really have a Session object. 
-    Instead we have SessionVw which lasts only for lifetime of a request, retrieving the session data from the session cookie.
-    It looks like a session but its really just a *snapshot in time* view of a session - same data but much shorter life.
+    """ Owing to statelessness of http, there cannot be a real Session object. Instead we have a
+    SessionVw which looks like a session but its really just a view- a snapshot of a session. It has same 
+    data but lasts only for a request lifetime, retrieving the session data from the session cookie.
     """
     __slots__ = ('modified') # 'container', 'new', is not used
     #_userKey = '_u'
 
     def __init__ (_s, handler):  # container, , new=False
+        # import webapp2
+        # assert isinstance(handler, webapp2.RequestHandler)
+        
         _s.modified = False
         _s.cookie = CookieMgr(handler)
         obj = None
@@ -101,31 +104,31 @@ class SessionVw (_UpdateDictMixin, dict):
                 _s.cookie.delete ()
             else:
                 #assert len(obj) == 2  
-                # sess = SessionVw (obj[0])
+                # ssn = SessionVw (obj[0])
                 # user = SessionVw (obj[1]) if obj[1] else None
                 assert type(obj) is dict            
         #else: logging.info('No cookie found')           
         dict.update (_s, obj or ())
 
     def save (_s):
-        #   memcache.set(sess['_userID'] + 'x', ok) 
-        # logging.info('Save sess items:||||||||||||||||||')
-        # for k, v in sess.iteritems():
+        #   memcache.set(ssn['_userID'] + 'x', ok) 
+        # logging.info('Save ssn items:||||||||||||||||||')
+        # for k, v in ssn.iteritems():
             # logging.info('         %s : %s', k, v)
         #logging.info('|||||||||||||||||||||||||||||||||||||')
         #user = handler.userDict
-        #smod = sess and sess.modified
+        #smod = ssn and ssn.modified
         #umod = user and user.modified
         # if umod:
             # um = usermodel().get_by_id(u[_id])
             # um.update(u)
             # um.put()
-        sess = _s.cookie.handler.sess
-        if sess and sess.modified:
-                #logging.debug ('1 setting session data = %r', sess)
+        ssn = _s.cookie.handler.ssn
+        if ssn and ssn.modified:
+                #logging.debug ('1 setting session data = %r', ssn)
                 #logging.debug ('2 setting user data = %r', user)
-                 #obj = (dict(sess), dict(user)) if user else dict(sess)
-                val = cryptoken.encodeSessionToken (sess) #, user
+                 #obj = (dict(ssn), dict(user)) if user else dict(ssn)
+                val = cryptoken.encodeSessionToken (ssn) #, user
                 if len (val) <= 4093: #some browsers will accept more but this is about the lowest browser limit
                     #logging.debug ('setting cookie = %r', val)
                     _s.cookie.set(val)
@@ -200,58 +203,22 @@ class SessionVw (_UpdateDictMixin, dict):
 #from google.appengine.api import memcache
     
 # def get (handler):
-    # sess = _get (handler.request)
-    # logging.info('get sess items:||||||||||||||||||')
+    # ssn = _get (handler.request)
+    # logging.info('get ssn items:||||||||||||||||||')
     # for k, v in s.iteritems():
         # logging.info('         %s : %s', k, v)
     # logging.info('|||||||||||||||||||||||||||||||||||||')
 
- # if not sess:
-    # sess['lang'] = 'en'
-    # _save (handler, sess)
+ # if not ssn:
+    # ssn['lang'] = 'en'
+    # _save (handler, ssn)
     # handler.redirect_to('nocookie', abort=True)
     
     
-   # cookieWasSet = memcache.get(sess['_userID'] + 'x') 
+   # cookieWasSet = memcache.get(ssn['_userID'] + 'x') 
 #        if cookieWasSet:
- #           sess.addFlash('There seems to be a problem reading the browser cookie. Please ensure cookies are not disabled.')
-    # return sess
+ #           ssn.addFlash('There seems to be a problem reading the browser cookie. Please ensure cookies are not disabled.')
+    # return ssn
     
 # import traceback as tb
-
-def get (handler):
-    cookie = CookieMgr (handler)
-    val = cookie.get()
-    if val:
-        #obj = None
-        #logging.debug("decode start")
-        #for i in range(10):        
-        obj = cryptoken.decodeToken (val, cookie.cfg)
-            #logging.debug("decode %d", i)
-            
-        #logging.debug("decode end")
-        #logging.debug ('1 getting session data = %r', obj)
-        if obj is None:
-            logging.warning ('deleting invalid cookie = %r', ckVal)
-            cookie.delete ()
-        else:
-            #assert len(obj) == 2  
-            # sess = SessionVw (obj[0])
-            # user = SessionVw (obj[1]) if obj[1] else None
-            # logging.debug ('2 getting session data = %r', (sess , user) )
-            # return sess, user
-            assert type(obj) is dict
-            #logging.debug ('2 getting session data = %r', SessionVw (obj)  )
-            
-            return SessionVw (obj)
-    #logging.info('No cookie found')   
-    
-    # for i in tb.format_list( tb.extract_stack()):
-        # logging.info('No cookie found: %s', i)   
-    
-    return SessionVw ({})
-
-
-#...............................................
-
 

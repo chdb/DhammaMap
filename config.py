@@ -41,11 +41,16 @@ from collections import namedtuple
                                   # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
                                                 #Todo: set latency value at runtime from multiple of eg a redirect
 
-LockCfg  = namedtuple('LockCfg' , ['maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
+LockCfg  = namedtuple('LockCfg' , ['name'      #
+                                  ])
+
+LockCfg  = namedtuple('LockCfg' , ['name'      # string - the monitor id
+                                  ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
+                                  ,'bGoodReset'# boolean - whether reset occurs for good login
+                                  #,'bDiffList' # boolean - whether uses difference list
                                   ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
                                   ,'locktime'  # seconds - duration of lockout
                                   ])
-
                           # seconds
 cfg={ 'maxAgeRecentLogin' : 60*10  
     , 'maxAgeSignUpTok'   : 60*60*24
@@ -53,7 +58,9 @@ cfg={ 'maxAgeRecentLogin' : 60*10
     , 'maxAgePassword2Tok': 60*60  
     
     , 'login_wait':          10     # deciSeconds - minimum time between requests.
-    , 'login_lock': LockCfg ( 3      #maxbad
+    , 'login_lock': LockCfg ('testname'      #name
+                            , 3      #maxbad
+                            , True   #bGoodReset
                             , 60*1   #period
                             , 60*3   #locktime
                             )

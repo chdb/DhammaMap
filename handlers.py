@@ -14,6 +14,7 @@ import logging
 import cryptoken
 import utils as u
 import i18n as i
+
 #import json
           
 #from os import path
@@ -27,15 +28,15 @@ import i18n as i
 class H_Home (b.H_Base):
 
     def get (_s):
-        # x =  _s.sess.iteritems()
-        # logging.info('user sess items:||||||||||||||||||')
+        # x =  _s.ssn.iteritems()
+        # logging.info('user ssn items:||||||||||||||||||')
         # for k, v in x:
             # logging.info('         %s : %s', k, v)
         # logging.info('|||||||||||||||||||||||||||||||||||||')
           
-        # l = _s.sess.get("lang") 
+        # l = _s.ssn.get("lang") 
         # if not l:
-            # _s.sess["lang"] = 'en' 
+            # _s.ssn["lang"] = 'en' 
             # logging.info('"lang" now set. ||||||||||||||||')
             
         # _s.sendEmail ( to = 'mr.colin.barnett@gmail.com'
@@ -50,9 +51,9 @@ class H_Home (b.H_Base):
 class H_NoCookie (b.H_Base):  # handles requests redirected here by decorator: @b.cookies  
 
     def get (_s):
-        if _s.sess:
+        if _s.ssn:
             # ok - so there is a cookie in there now 
-            _s.sess['rtt'] = u.msNow() - _s.sess['ts']
+            _s.ssn['rtt'] = u.msNow() - _s.ssn['ts'] # rtt: round trip time
             url = _s.request.get('nextUrl')
             _s.redirect (u.utf8(url)) # go back to the page you first thought of
         else:
@@ -188,7 +189,7 @@ class H_NewPassword (b.H_Base):
         logging.debug ('H_NewPassword GET handler called')
         if not token:
             newTok = u.newPasswordToken()
-            return loggedInRecently(_s._serve) (_s.sess['_userID'], newTok)
+            return loggedInRecently(_s._serve) (_s.ssn['_userID'], newTok)
 
         tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
         if tokData:
@@ -288,38 +289,65 @@ class H_Login (b.H_Base):
             # _s.writeResponse (mode='wait', delay=delay)
     
     def post (_s):
+        ip = _s.request.remote_addr
         em = _s.request.get('email')
         pw = _s.request.get('password')
-        logging.debug('~~~~~~ ######### em=%r'%em)
-        logging.debug('~~~~~~ ######### pw=%r'%pw)
-        
-        wait = _s.app.config['login_wait']
-        rl = b.RateLimiter()
-        if rl.ready (em, wait, _s.sess['rtt']):
-            state, user = m.User.byCredentials (em, pw)
-            if state == 'locked':
-                _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
-            elif state == 'bad':
-                _s.flash ('log-in failed: either the email or the password is wrong.')
-            elif state == 'good':
+        cf = _s.app.config ['loginRateLimit']
+        rl = b.RateLimiter (em, ip, cf)
+        if rl.ready (cf.minDelay, _s.ssn['rtt']):
+            rl.state, user = m.User.byCredentials (em, pw)
+            if user:
                 _s.logIn(user) 
-            else: assert False, 'byCredentials() returned unexpected state: ' + state
-            rl.state = state
+            elif rl.state == 'locked': _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
+            elif rl.state == 'bad'   : _s.flash ('log-in failed: either the email or the password is wrong.')
         elif rl.state == '429':
-            logging.warning('BruteForceAttack? login rate-limited for user: %s pwd: %s', em, pw)
+            logging.warning('BruteForceAttack? throttle failure 429 for em:%s ip:%s %s pwd:%s', em, ip, pw)
             _s.flash('http code: 429 Too Many Requests')
-        else:
-            assert rl.state == 'wait'
-            
-        cfg = _s.app.config['login_lock']
-        if rl.lock (em, cfg):
+        cfg = rl.lock()
+        if cfg:
+            if cfg.name == 'email':
+                m.User.lock (em, cfg.locktime)
+            elif cfg.name == 'email & ip':
+                m.User.lock (em, cfg.locktime)
+            elif cfg.name == 'ip':
+                m.BadIP.lock (ip, cfg.locktime)
             _s.flash ('Too many log-in failures: this account is now locked for a period.')
-            logging.warning('BruteForceAttack? account locked for user: %s', em)
-            user = m.User.byEmail(em) 
-            user.lockoutexpiry = u.dtExpiry (cfg.locktime)
-            user.put()
-        logging.debug('state =  %s',rl.state)
-        _s.writeResponse (mode=rl.state, delay=wait*100) # 100 converts ds to ms
+            logging.warning('BruteForceAttack? start lock on %s: ip:%s %s pwd:%s',cfg.name, em, ip, pw)
+        _s.writeResponse (mode=rl.state, delay=rl.delay*100) # 100 converts ds to ms
+        
+    # def post (_s):
+        # em = _s.request.get('email')
+        # pw = _s.request.get('password')
+        # logging.debug('~~~~~~ ######### em=%r'%em)
+        # logging.debug('~~~~~~ ######### pw=%r'%pw)
+        
+        # wait = _s.app.config['login_wait']
+        # rl = b.RateLimiter()
+        # if rl.ready (em, wait, _s.ssn['rtt']):
+            # state, user = m.User.byCredentials (em, pw)
+            # if state == 'locked':
+                # _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
+            # elif state == 'bad':
+                # _s.flash ('log-in failed: either the email or the password is wrong.')
+            # elif state == 'good':
+                # _s.logIn(user) 
+            # else: assert False, 'byCredentials() returned unexpected state: ' + state
+            # rl.state = state
+        # elif rl.state == '429':
+            # logging.warning('BruteForceAttack? login rate-limited for user: %s pwd: %s', em, pw)
+            # _s.flash('http code: 429 Too Many Requests')
+        # else:
+            # assert rl.state == 'wait'
+            
+        # cfg = _s.app.config['login_lock']
+        # if rl.lock (em, cfg):
+            # _s.flash ('Too many log-in failures: this account is now locked for a period.')
+            # logging.warning('BruteForceAttack? account locked for user: %s', em)
+            # user = m.User.byEmail(em) 
+            # user.lockoutexpiry = u.dtExpiry (cfg.locktime)
+            # user.put()
+        # logging.debug('state =  %s',rl.state)
+        # _s.writeResponse (mode=rl.state, delay=wait*100) # 100 converts ds to ms
         
 # from functools import partial
 # do_four(partial(print_twice, str))
@@ -348,10 +376,10 @@ class H_Auth (b.H_Base):
 
     @b.loggedIn
     def get (_s, stoken=None):
-        #todo use stoken from the url, as a sess token, when cookies are disabled
+        #todo use stoken from the url, as a ssn token, when cookies are disabled
         #implement: in savesess() NoCookie = check when dummy? cookie is not coming back
-        #              when NoCookie save sess in stok in url 
-        #           in getsess when NoCookie get sess from stok in url
+        #              when NoCookie save ssn in stok in url 
+        #           in getsess when NoCookie get ssn from stok in url
         logging.debug('stoken: %s', stoken if stoken else '-')
         _s.serve ('secure.html')
         
