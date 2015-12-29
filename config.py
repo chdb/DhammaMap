@@ -41,47 +41,53 @@ from collections import namedtuple
                                   # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
                                                 #Todo: set latency value at runtime from multiple of eg a redirect
 
-LockCfg  = namedtuple('LockCfg' , ['emLock'      #
-                                  ,'ipLock'    # 
-                                  ,'eiLock'    # 
-                                  ])
+RateLimitCfg = namedtuple('RateLimitCfg', ['minDelay'      #
+                                          ,'locks'    # 
+                                          ])
+LockCfg = namedtuple('LockCfg',  ['emLock'      #
+                                 ,'ipLock'    # 
+                                 ,'eiLock'    # 
+                                 ])
 
-LockCfg  = namedtuple('LockSubCfg', ['name'      # string - the monitor id
-                                    ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
-                                    ,'bGoodReset'# boolean - whether reset occurs for good login
-                                    #,'bDiffList' # boolean - whether uses difference list
-                                    ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
-                                    ,'locktime'  # seconds - duration of lockout
-                                    ])
+LockSubCfg = namedtuple('LockSubCfg',  ['name'      # string - the monitor id
+                                       ,'delayFn'   # lambda
+                                       ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
+                                       ,'bGoodReset'# boolean - whether reset occurs for good login
+                                       ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
+                                       ,'locktime'  # seconds - duration of lockout
+                                       ])
                           # seconds
 cfg={ 'maxAgeRecentLogin' : 60*10  
     , 'maxAgeSignUpTok'   : 60*60*24
     , 'maxAgePasswordTok' : 60*60  
     , 'maxAgePassword2Tok': 60*60  
     
-    , 'login_wait': 10     # deciSeconds - minimum time between requests.
-    , 'login_lock':LockCfg (LockSubCfg  ('email & ip'      #name
-                                        , 3      #maxbad
-                                        , True   #bGoodReset
-                                        , 60*1   #period
-                                        , 60*3   #locktime
-                                        ) 
-                            LockSubCfg  ('email'      #name
-                                        , 3      #maxbad
-                                        , True   #bGoodReset
-                                        , 60*1   #period
-                                        , 60*3   #locktime
-                                        )
-                            LockSubCfg  ('ip'      #name
-                                        , 3      #maxbad
-                                        , True   #bGoodReset
-                                        , 60*1   #period
-                                        , 60*3   #locktime
-                            )           )
-    , 'pepper'            : None          
-    , 'log_email'         : True
-    , 'email_developers'  : True
-    , 'developers'        : (('Santa Klauss', 'snowypal@northpole.com'))
+    , 'loginRateLimit': RateLimitCfg ( 10     # deciSeconds - minimum time between requests.
+                                     , LockCfg ( LockSubCfg ('email & ip'      #name
+                                                            , lambda n: n**2
+                                                            , 3      #maxbad
+                                                            , True   #bGoodReset
+                                                            , 60*1   #period
+                                                            , 60*3   #locktime
+                                                            ) 
+                                               , LockSubCfg ('email'      #name
+                                                            , lambda n: n*3
+                                                            , 3      #maxbad
+                                                            , True   #bGoodReset
+                                                            , 60*1   #period
+                                                            , 60*3   #locktime
+                                                            )
+                                               , LockSubCfg ('ip'      #name
+                                                            , lambda n: n*5
+                                                            , 3      #maxbad
+                                                            , True   #bGoodReset
+                                                            , 60*1   #period
+                                                            , 60*3   #locktime
+                                      )        )            )
+    , 'pepper'             : None          
+    , 'log_email'          : True
+    , 'email_developers'   : True
+    , 'developers'         : (('Santa Klauss', 'snowypal@northpole.com'))
     
  
     # add-to/update the default_config at  \webapp2_extras\jinja2.py

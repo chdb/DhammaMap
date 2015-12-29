@@ -33,7 +33,7 @@ class BadIP (ndb.Model):
     @classmethod
     def lock (_C, ip, locktime):
         exp = u.dtExpiry (locktime)
-        badIp = find (ip)
+        badIp = _C.find (ip)
         if badIp:
             badIp.lockoutExpiry = exp
         else: 
@@ -243,7 +243,7 @@ class UserBase (ndb.Model):
 
     @classmethod
     def byCredentials (_C, email, praw, ip):
-        badIp = LockedIP.find(ip)
+        badIp = BadIP.find(ip)
         dt = d.datetime.now()
         if badIp:
             if badIp.lockoutExpiry > dt:

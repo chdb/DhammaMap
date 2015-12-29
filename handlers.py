@@ -294,8 +294,8 @@ class H_Login (b.H_Base):
         pw = _s.request.get('password')
         cf = _s.app.config ['loginRateLimit']
         rl = b.RateLimiter (em, ip, cf)
-        if rl.ready (cf.minDelay, _s.ssn['rtt']):
-            rl.state, user = m.User.byCredentials (em, pw)
+        if rl.ready (_s.ssn['rtt']):
+            rl.state, user = m.User.byCredentials (em, pw, ip)
             if user:
                 _s.logIn(user) 
             elif rl.state == 'locked': _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
@@ -312,7 +312,7 @@ class H_Login (b.H_Base):
             elif cfg.name == 'ip':
                 m.BadIP.lock (ip, cfg.locktime)
             _s.flash ('Too many log-in failures: this account is now locked for a period.')
-            logging.warning('BruteForceAttack? start lock on %s: ip:%s %s pwd:%s',cfg.name, em, ip, pw)
+            logging.warning('BruteForceAttack? start lock on %s: email:%s pwd:%s ip:%s',cfg.name, em, pw, ip)
         _s.writeResponse (mode=rl.state, delay=rl.delay*100) # 100 converts ds to ms
         
     # def post (_s):

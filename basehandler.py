@@ -169,8 +169,9 @@ class RateLimiter (object):
         _s.state = None
         _s.ei = em + ip
         _s.mc = memcache.Client()
-        _s.delay = 0 # ds
+        _s.delay = cfg.minDelay # ds
         _s.monitors = []
+        cfg = cfg.locks
         if cfg.emLock:
             _s.monitors.append(('L:'+ em, ip, cfg.emLock))
         if cfg.ipLock:
@@ -181,6 +182,8 @@ class RateLimiter (object):
             val = _s.mc.get (key)
             if val:
                 nBad = _s._nBad (val,diff) [0]
+                logging.debug('delay = %d',_s.delay)
+                logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
                 _s.delay += cf.delayFn(nBad)
     
     def _nBad (_s, val, diff):
@@ -188,12 +191,12 @@ class RateLimiter (object):
         nBad = len(dset) if diff else val  # number of bad login attempts filtered under this key
         return nBad, dset
             
-    def ready (_s, minDelay, rtt):
-        _s.delay += minDelay
+    def ready (_s, rtt):
+       # _s.delay += minDelay
         now = u.dsNow() # deciseconds
         key = 'W:'+ _s.ei
         expiry = _s.mc.get (key)
-        logging.debug('expiry = %r',expiry)
+        #logging.debug('expiry = %r',expiry)
         if expiry:
             _s.mc.delete (key)
             if expiry <= now:
@@ -225,7 +228,7 @@ class RateLimiter (object):
                             _s.mc.delete (key)
                     elif bad:   
                         if nBad < cfg.maxbad:
-                            logging.debug('count = %d',nBad)
+                            logging.debug('same %s count = %d', cfg.name, nBad)
                             if diff:
                                 if diff not in dset:
                                     dset.add(diff)
@@ -233,12 +236,15 @@ class RateLimiter (object):
                                     _s.mc.set (key, val, exp) # keep same exp time
                             else: _s.mc.incr (key)
                         else: 
-                            logging.debug('count = %d Lock!',nBad)
+                            logging.debug('same %s count = %d  Lock!', cfg.name, nBad)
                             _s.mc.delete (key)
                             lockNow = cfg # lock the account in ndb
                 else:
                     if bad:
-                        exp = u.dsNow() + cfg.period #need use absolute time
+                        #logging.debug('ts: %x', u.dsNow())
+                        #logging.debug('period: %x', cfg.period)
+                        exp = u.sNow() + cfg.period #need use absolute time
+                        #logging.debug('exp: %x', exp)
                         val = (set([diff]), exp) if diff else 1 # diff set needs a tuple so it knows the expiry 
                         _s.mc.set (key, val, exp)
         return lockNow
