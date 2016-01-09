@@ -86,25 +86,19 @@ class H_Signup (b.H_Base):
         em = _s.request.get ('email')
         existed, authkey = m.AuthKey.getFromEmail (em, tokid)
         if existed and authkey.verified():
-            msg = 'The signup process is complete. If you need to change your account details, go to ...' #todo: edit page
+            msg = 'You have already signed up. If you need to change your account details, go to ...' #todo: edit page
         else:
             tokenStr = cryptoken.encodeVerifyToken (tokid, 'signUp')
-            verify_url = _s.uri_for ('signup_2'
-                                    , token=tokenStr
-                                    , _full=True
-                                    )
-            msg = '''To continue the sign up process, please click this link:
-                   <a href="{url}">{url}</a>'''.format (url=verify_url)
-            if existed:
+            verify_url = _s.uri_for ('signup_2', token=tokenStr, _full=True)
+            msg = '''To continue the sign up process, you need to register. Please click this link:
+                     <a href="{url}">{url}</a>'''.format (url=verify_url)
+            if existed: # but not yet verified
                 authkey.token = tokid
                 authkey.put()
-                msg = 'Try again! '+ msg  
+                msg = 'This account is not yet verified. Please try again! '+ msg  
             logging.debug('sent  url = %s', verify_url)
         _s.sendEmail(to=em, subject='Signing Up to Dhamma Map', html=msg)
-        
-        #todo: comment-out
-        _s.flash(msg)
-
+        _s.flash(msg)#todo: comment-out!
         _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
                 
 #------------------------------------
@@ -124,7 +118,6 @@ class H_Signup_2 (b.H_Base):
             _s.flash ('That link is invalid in some way. It might be too old.  Please try again.')
             _s.serve ('signup.html') 
             
-      
     def post (_s, token):
         _s.logOut()
         tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
@@ -287,7 +280,7 @@ class H_Login (b.H_Base):
         # else:
             # _s.flash ('log-in failed: either the username or the password is wrong.')
             # _s.writeResponse (mode='wait', delay=delay)
-    
+        
     def post (_s):
         ip = _s.request.remote_addr
         em = _s.request.get('email')
@@ -305,14 +298,18 @@ class H_Login (b.H_Base):
             _s.flash('http code: 429 Too Many Requests')
         cfg = rl.lock()
         if cfg:
-            if cfg.name == 'email':
-                m.User.lock (em, cfg.locktime)
-            elif cfg.name == 'email & ip':
-                m.User.lock (em, cfg.locktime)
-            elif cfg.name == 'ip':
+            if cfg.name == 'ip':
+                target ='you are now locked out'
                 m.BadIP.lock (ip, cfg.locktime)
-            _s.flash ('Too many log-in failures: this account is now locked for a period.')
+            else:
+                target ='this account is now locked'
+                if cfg.name == 'email':
+                    m.User.lock (em, cfg.locktime)
+                elif cfg.name == 'email & ip':
+                    m.User.lock (em, cfg.locktime)
+            _s.flash ('Too many log-in failures: %s for %s.' % (target, u.hoursMins(cfg.locktime)))
             logging.warning('BruteForceAttack? start lock on %s: email:%s pwd:%s ip:%s',cfg.name, em, pw, ip)
+        logging.debug('login handler ##### delay: %d ms', rl.delay*100)
         _s.writeResponse (mode=rl.state, delay=rl.delay*100) # 100 converts ds to ms
         
     # def post (_s):

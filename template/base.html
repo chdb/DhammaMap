@@ -4,11 +4,20 @@
     <head>
         <meta charset="utf-8">        
 		<title>{% block title %}Dhamma Map{% endblock %}</title>
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
-		<script src="../static/jquery-blockUI.js"></script>
+		<script src="../static/jquery.blockUI.js"></script>
         <style>
 			input 	{ display : block; 	}
-			#flashes{ border  : 1px solid transparent; } /* stops jerks in $.slideUp() and $.slideDown() */
+			ul 		{ margin  : 0px; 	}
+			#flashes{ /*margin  : 20px;*/
+					  /*border  : 1px solid transparent;   stops jerks in $.slideUp() and $.slideDown() */
+					  background-color : pink;	
+					  /*display: none;*/
+					  }
+			#formdiv{ border  : 1px solid blue;
+					  padding : 0 20px 20px 20px;
+					  }
 			{% block mediaCSS %}
 			{% endblock %}
         </style>
@@ -18,8 +27,10 @@
 			<h1>This website requires Javascript to be enabled!</h1>
         </noscript>
 		<div id="js-only" style="display:none">
-			<div id="flashes">
-				{{ fmsgs }}
+			<div>
+			    <ul id="flashes">
+					{{ fmsgs }}
+				</ul>
 			</div>
 			<div class="content">
 				{% block maincontent %}
@@ -37,7 +48,7 @@
 					{% endif %}
 						| <a href="/">Home</a>
 						| <a href="/signup">New user</a>
-						| <a href="/secure{{ token }}">Secured page</a> (you can see this after login)
+						| <a href="/secure{{ token }}">Secured page</a> (you can only see this after login)
 					</p>
 				</footer>
 			</div>

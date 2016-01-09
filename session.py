@@ -97,7 +97,7 @@ class SessionVw (_UpdateDictMixin, dict):
         obj = None
         val = _s.cookie.get()
         if val:
-            obj = cryptoken.decodeToken (val, _s.cookie.cfg)
+            obj = cryptoken.decodeToken (val, _s.cookie.cfg, 'session')
             #logging.debug ('session data = %r', obj)
             if obj is None:
                 logging.warning ('deleting invalid cookie = %r', val)

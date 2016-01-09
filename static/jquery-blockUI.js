@@ -27,7 +27,7 @@
 		// var mode = document.documentMode || 0;
 		var setExpr = $.isFunction( document.createElement('div').style.setExpression );
 		$.blockUI   = function(opts) { install(window, opts); };	// global $ methods for blocking/unblocking the entire page 
-		$.unblockUI = function(opts) { remove(window, opts); };
+		$.unblockUI = function(opts) { remove (window, opts); };
 		$.growlUI = function(title, message, timeout, onClose) 		// convenience method for quick growl-like notifications  (http://www.google.com/search?q=growl) 
 		{	var $m = $('<div class="growlUI"></div>');
 			if (title) 

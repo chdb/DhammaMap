@@ -16,13 +16,14 @@ from base64 import urlsafe_b64encode\
 class Base64Error (Exception):
     '''invalid Base64 character or incorrect padding'''
 
-def decodeToken (token, cfg, expected=None):
+def decodeToken (token, cfg, expected):
     try:
         td = _decode (token)
         # if expected:
             # tt = _tokenType (expected)
         if td.valid (cfg, expected):
-            td.data['_ts'] = td.timeStamp
+            if expected == 'session':
+                td.data['_ts'] = td.timeStamp
             return td.data  
     except Base64Error:
         logging.warning ('invalid Base64 in Token: %r', token)
@@ -67,22 +68,22 @@ class _TokenData (object):
         _s.data  = obj
                  
     def maxAge (_s, cfg): 
-        if   _s.tokenType == 'anon'  : return cfg['maxIdleAnon']
-        elif _s.tokenType == 'auth'  : return cfg['maxIdleAuth']
-        elif _s.tokenType == 'signUp': return cfg['maxAgeSignUpTok']
-        elif _s.tokenType == 'pw1'   : return cfg['maxAgePasswordTok']
-        elif _s.tokenType == 'pw2'   : return cfg['maxAgePassword2Tok']
+        if   _s.tokenType =='anon'  : return cfg['maxIdleAnon']
+        elif _s.tokenType =='auth'  : return cfg['maxIdleAuth']
+        elif _s.tokenType =='signUp': return cfg['maxAgeSignUpTok']
+        elif _s.tokenType =='pw1'   : return cfg['maxAgePasswordTok']
+        elif _s.tokenType =='pw2'   : return cfg['maxAgePassword2Tok']
         else: raise RuntimeError ('invalid token type')
                 
-    def valid (_s, cfg, expected=None): 
+    def valid (_s, cfg, expected): 
         """Checks encryption validity and expiry: whether the token is younger than maxAge seconds.
         Use neutral evaluation pathways to beat timing attacks.
         NB: return only success or failure - log shows why it failed but user mustn't know ! 
         """
-        btt = _s.tokenType == 'anon' \
-           or _s.tokenType == 'auth'  \
-              if expected is None else \
-              _s.tokenType == expected 
+        btt = (_s.tokenType == 'anon' \
+            or _s.tokenType == 'auth') \
+        if expected == 'session' else   \
+              (_s.tokenType == expected) 
         bData = _s.data is not None #  and (type(_s.data) == dict)
         bTS = utils.validTimeStamp (_s.timeStamp, _s.maxAge(cfg))
         
@@ -129,7 +130,9 @@ def _serialize (data):
     
 def _deserialize (data):
     try: 
+        # logging.debug('data1: %r', data)
         obj = json.loads (data)
+        # logging.debug('obj: %r', obj)
         return obj # byteify(obj)
     except Exception, e:
         logging.exception(e)
@@ -173,5 +176,6 @@ def _decode (token):
     mac2 = _hash (data, ts)
     bMac = utils.sameStr (mac1, mac2)
     data = _deserialize (data [preDataLen: ])
+    # logging.debug('data: %r', data)
     return _TokenData (token, ttype, data, bMac, ts)
     

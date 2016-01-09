@@ -25,25 +25,42 @@ import datetime as d
 # class AlreadyExistsError (Exception):
     # '''this authid is already taken'''
 #from socket import inet_aton
+
+def bLocked (m): 
+    togo = m.lockUntil - d.datetime.now()
+    bUnexpired = togo > d.timedelta()
+    if bUnexpired:
+        logging.warning('locked for %d more seconds', togo.total_seconds())
+    return bUnexpired
+
     
-class BadIP (ndb.Model):
+class Lock (ndb.Model):
   #  ip = ndb.StringProperty()
-    lockoutExpiry = ndb.DateTimeProperty(default=0)
+    lockUntil = ndb.DateTimeProperty(required=True)
     
     @classmethod
-    def lock (_C, ip, locktime):
+    def lock (_C, k, locktime):
         exp = u.dtExpiry (locktime)
-        badIp = _C.find (ip)
-        if badIp:
-            badIp.lockoutExpiry = exp
+        bad = _C.find (k)
+        if bad:
+            bad.lockUntil = exp
         else: 
-            badIp = _C(lockoutExpiry=exp, id=ip)
-        badIp.put()
+            bad = _C(lockUntil=exp, id=k)
+        bad.put()
         
     @classmethod
-    def find (_C, ip):
-        return _C.get_by_id (ip)
-    
+    def find (_C, k):
+        return _C.get_by_id (k)
+        
+    @classmethod
+    def locked (_C, k):
+        bad = _C.find(k)
+        return bad and bLocked (bad)
+                
+
+class BadIP (Lock): pass
+
+class BadEmail (Lock): pass
 
 class AuthKey (ndb.Model):
     """A model to implement a many-to-one relationship from unique stringIDs (authID-strings) to User entities: 
@@ -72,15 +89,17 @@ class AuthKey (ndb.Model):
 
     @classmethod
     @ndb.transactional
-    def _getFrom (_C, uniqueStr, token): 
+    def _get (_C, uniqueStr, token): 
         ''' Every named key for an entity in any ndb model, must be unique. (Two entities can have the same values, but their keys must differ) 
         We can test uniqueness of a string by using it as a named key and then see if we can get() an entity with that key.
         If not, then the string is unique over those entities. 
         Initially at signup1 the first entity for a particual User is created with uid==0. 
         Later when the email is validated at signup2, the User entity is created and the AuthKey uid is update to the User id.   
         Additional AuthKey's for the same User will be created with non-zero uids.
-        returns tuple: boolean: whether already exists (ie not created)
-                       AuthID entity
+        
+        Find the AuthKey if it exists for this uniqueStr, else create it. 
+        return tuple: boolean: whether already existed (ie not created)
+                      AuthID entity
         '''
         k = ndb.Key(_C, uniqueStr)
         ent = k.get() 
@@ -106,11 +125,11 @@ class AuthKey (ndb.Model):
         
     @classmethod
     def getFromOwnID (_C, own, tokID):
-         return _C._getFrom( _C.ownID (own), tokID)
+         return _C._get( _C.ownID (own), tokID)
         
     @classmethod
     def getFromEmail (_C, email, tokID):
-        return _C._getFrom( _C.emailID (email), tokID)
+        return _C._get( _C.emailID (email), tokID)
         
     @classmethod
     def byEmail (_C, email):
@@ -146,11 +165,10 @@ class AuthKey (ndb.Model):
         
 class UserBase (ndb.Model):
     """Stores user authentication credentials or authorization ids."""
-
-    updated      = ndb.DateTimeProperty (auto_now=True)
-    lockoutExpiry = ndb.DateTimeProperty(default=0)
-    authIDs = ndb.StringProperty   (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
-    pwdhash = ndb.StringProperty() # Hashed password string. NB not a required prop because third party authentication doesn't use password.
+    updated  = ndb.DateTimeProperty (auto_now=True)
+    lockUntil= ndb.DateTimeProperty (auto_now_add=True)
+    authIDs  = ndb.StringProperty (repeated=True) # list of IDs. EG for third party authentication, e.g. 'google:username'. UNIQUE.
+    pwdhash  = ndb.StringProperty () # Hashed password string. NB not a required prop because third party authentication doesn't use password.
    # lastIP  = ndb.StringProperty()
     # @classmethod
     # def _uniPair (_C, n, v):
@@ -177,7 +195,7 @@ class UserBase (ndb.Model):
         
         """
         assert ':' in authID
-        ok = AuthKey._getFrom (authID, _s.uid) [0] #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
+        ok = AuthKey._get (authID, _s.uid) [0] #  _s.unique_model.create (_C._uniPair('auth_id', auth_id)) :
         if ok:        
             _s.authIDs.append (authID) #ToDo: test this line  (moved from before the conditional)
             _s.modified = True
@@ -237,27 +255,33 @@ class UserBase (ndb.Model):
 
     @classmethod
     def lock (_C, email, locktime):
-        user = _C.byEmail(email) 
-        user.lockoutexpiry = u.dtExpiry (locktime)
-        user.put()
+        user = _C.byEmail(email)
+        if user:
+            user.lockoutexpiry = u.dtExpiry (locktime)
+            user.put()
+        else:
+            BadEmail.lock (email, locktime)
+
+    # def locked (_s):
+        # return _s.lockUntil > d.datetime.now()
 
     @classmethod
     def byCredentials (_C, email, praw, ip):
-        badIp = BadIP.find(ip)
-        dt = d.datetime.now()
-        if badIp:
-            if badIp.lockoutExpiry > dt:
-                logging.warning ('locked out ip: %s', ip)
-                return 'locked', None
+        if BadIP.locked(ip):
+            logging.warning ('locked out ip: %s', ip)
+            return 'locked', None
         user = _C.byEmail (email)  
         if user:
-            if user.lockoutExpiry > dt:
+            if bLocked (user):
                 logging.warning ('locked out email: %s', email)
                 return 'locked', None
             if u.badPassword (user.pwdhash, praw):      
                 logging.debug('wrong praw: %s', praw)
                 return 'bad', None
             return 'good', user
+        elif BadEmail.locked(email):
+            return 'locked', None
+            
         logging.debug('wrong email: %s', email)
         return 'bad', None
         

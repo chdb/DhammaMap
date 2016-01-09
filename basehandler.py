@@ -171,20 +171,20 @@ class RateLimiter (object):
         _s.mc = memcache.Client()
         _s.delay = cfg.minDelay # ds
         _s.monitors = []
-        cfg = cfg.locks
-        if cfg.emLock:
-            _s.monitors.append(('L:'+ em, ip, cfg.emLock))
-        if cfg.ipLock:
-            _s.monitors.append(('L:'+ ip, em, cfg.ipLock))
-        if cfg.eiLock:
-            _s.monitors.append(('L:'+ _s.ei, None, cfg.eiLock))
+        if 'ei' in cfg.locks:
+            _s.monitors.append((_s.ei, None, cfg.locks['ei']))
+        if 'em' in cfg.locks:
+            _s.monitors.append((em, ip, cfg.locks['em']))
+        if 'ip' in cfg.locks:
+            _s.monitors.append((ip, em, cfg.locks['ip']))
+        _s.monitors = [('L:'+ k, d,c) for (k,d,c) in _s.monitors]    
         for key, diff, cf in _s.monitors:
             val = _s.mc.get (key)
             if val:
                 nBad = _s._nBad (val,diff) [0]
-                logging.debug('delay = %d',_s.delay)
-                logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
+                #logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
                 _s.delay += cf.delayFn(nBad)
+        logging.debug('delay = %d ms',_s.delay * 100)
     
     def _nBad (_s, val, diff):
         dset = val[0]    if diff else None # set of distinct emails or ips
@@ -220,6 +220,7 @@ class RateLimiter (object):
         lockNow = None
         if good or bad:
             for key, diff, cfg in _s.monitors:
+                #key = 'L:'+ key
                 val = _s.mc.get (key)
                 if val:
                     nBad, dset = _s._nBad (val,diff)
@@ -234,6 +235,7 @@ class RateLimiter (object):
                                     dset.add(diff)
                                     exp = val[1]
                                     _s.mc.set (key, val, exp) # keep same exp time
+                                logging.debug('dset: %r', dset)
                             else: _s.mc.incr (key)
                         else: 
                             logging.debug('same %s count = %d  Lock!', cfg.name, nBad)
@@ -316,15 +318,12 @@ class H_Base (wa2.RequestHandler):
     def get_fmessages (_s):
         f = _s.ssn.getFlashes()
         #logging.info('>>>>>>>>>>>>> ok added fmsgs: %r' % f)  
-        fmsgs_tmpl = Template ("""  {%- if fmessages -%}
-                                        <ul>
-                                            {%- for fmsg in fmessages -%}
-                                                <li>{{ fmsg.0 }}</li>
-                                            {%- endfor -%}
-                                        </ul>
-                                        <hr>
-                                     {%- endif -%}
-                               """)
+        fmsgs_tmpl = Template ("""
+{%- if fmessages -%}
+    {%- for fmsg in fmessages -%}
+        <li>{{ fmsg.0 }}</li>
+    {%- endfor -%}
+{%- endif -%}                  """)
         fmsgs_html = fmsgs_tmpl.render (fmessages= f) # _s.ssn.getFlashes())
         # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' % fmsgs_html)  
         # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' %  str(fmsgs_html))  

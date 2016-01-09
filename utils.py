@@ -9,11 +9,28 @@ import base64
 from webapp2_extras import security
 import datetime as d
 import config
+import random
+import string    
 
 def utf8 (u):
     assert isinstance (u, unicode)
     return u.encode('utf-8')
+    
+def randomPrintable():
+    return random.choice(string.printable)
 
+def hoursMins(seconds):
+    assert seconds >= 0
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    str = '%d hours' % h if h else ''
+    if h and m: 
+        str+= ', '
+    if m:
+        str+= '%d minutes' % m
+    return str
+
+    
 # class Singleton (object):
     # """ A non-thread-safe helper class to ease implementing singletons.
     # This should be used as a decorator -- not a metaclass -- to the class that should be a singleton.
