@@ -53,8 +53,8 @@ TokenTypes = ( 'anon'
              , 'pw1'
              , 'pw2'
              )
-def _tokenType (code):   return TokenTypes [code]
 def _tokenTypeCode (tt): return TokenTypes.index(tt)
+def _tokenType (code):   return TokenTypes [code]
 #.........................................
         
 class _TokenData (object):
@@ -145,6 +145,7 @@ def _encode (tokentype, obj, uid=None):
     assert bool(uid) == (tokentype == 'auth')
     tt = _tokenTypeCode (tokentype)
     now = utils.sNow()
+    logging.debug ('encode tokentype = %r tt = %r',tokentype, tt)
     if uid:                     
         # docs say length of ndb.model.id is 64 bit so assume range is C signed int64 (not C unsigned int64)
         assert uid >= -(2**63) ,'uid less than: -(2**63)'
@@ -166,6 +167,7 @@ def _decode (token):
     
     ts, tt, uid = W._iBq.unpack_from (bytes)     # uid is arbitrary unless tt == 0 (1st 8 bytes of the MAC(20 bytes)).
     ttype = _tokenType (tt)
+    logging.debug ('decode tokentype = %r tt = %r',ttype, tt)
     if ttype == 'auth': 
         preDataLen = TS+CH+UID
     else:  

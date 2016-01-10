@@ -102,6 +102,36 @@ class H_Signup (b.H_Base):
         _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
                 
 #------------------------------------
+class H_Forgot (b.H_Base):
+
+    def get (_s):
+        _s.logOut()
+        _s.serve ('forgot.html')
+
+    def post (_s):
+        em = _s.request.get ('email')
+        tokid = u.newPasswordToken()
+        authkey = m.AuthKey.byEmail (em)
+        if authkey and authkey.verified():
+            authkey.token = tokid
+            authkey.put()
+            uid = _s.ssn.get ('_userID')
+            tok = cryptoken.encodeVerifyToken ((uid, tokid), 'pw1')
+            url = _s.uri_for ('newpassword', token=tok, _full=True)
+            msg = '''<a href="%s">Click here</a> to proceed to security questions before changing your password.
+                  '''% url
+            # todo: security questions
+        else:
+            url = _s.uri_for ('signup', _full=True) 
+            msg = '''This email address does not have an account at DhammaMap. 
+                     If you want to open an account please <a href="%s">click here</a>.
+                  '''% url                
+        _s.sendEmail (to=em, subject='Lost password to Dhamma Map', html=msg)
+        logging.info('sent email with for  url = %s', url)
+        _s.flash(msg)#todo: comment-out!
+        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
+
+#------------------------------------
 class H_Signup_2 (b.H_Base):
     
     @b.cookies
@@ -142,34 +172,9 @@ class H_Signup_2 (b.H_Base):
         _s.redirect_to ('signup')
        
 #------------------------------------   
-class H_Forgot (b.H_Base):
-
-    def get (_s):
-        _s.logOut()
-        _s.serve ('forgot.html')
-
-    def post (_s):
-        em = _s.request.get ('email')
-        tokid = u.newPasswordToken()
-        authkey = m.AuthKey.byEmail (em)
-        if authkey and authkey.verified():
-            authkey.token = tokid
-            authkey.put()
-            tokenStr = cryptoken.encodeVerifyToken (tokid, 'pw1')
-            msg = '''<a href="%s">Click here</a> to proceed to security questions before changing your password.
-                  '''% _s.uri_for ('newpassword', token=tokenStr, _full=True) # todo: security questions
-        else:
-            msg = '''This email address does not have an account at DhammaMap. If you want to open an account please <a href="%s">click here</a>.
-                  '''% _s.uri_for ('signup', _full=True)                 
-        _s.sendEmail (to=em, subject='Lost password to Dhamma Map', html=msg)
-        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
-        logging.info('sent  url = %s', verify_url)
-
-#------------------------------------
 class H_NewPassword (b.H_Base):
-    '''get and post are called when 1) anon user has lost password 
-                                or  2) auth user wants to change password'''
-
+    '''When anon user has lost password or auth user wants to change password'''
+    
     def _serve (_s, uid, newTok):
         logging.debug ('H_NewPassword serve  called')
         assert uid, 'no uid!'
@@ -179,22 +184,24 @@ class H_NewPassword (b.H_Base):
         _s.serve ('resetpassword.html', {'token':verTok})
         
     def get (_s, token):
-        logging.debug ('H_NewPassword GET handler called')
+        logging.debug ('H_NewPassword GET handler called, token = %r', token)
         if not token:
             newTok = u.newPasswordToken()
-            return loggedInRecently(_s._serve) (_s.ssn['_userID'], newTok)
-
-        tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
-        if tokData:
-            uid, oldTok = tokData
-            user = m.User.byUid(uid)
-            if user:
-                newTok = u.newPasswordToken()
-                if user.validate(oldTok, newTok):
-                    return _s._serve (uid, newTok)
-        _s.logOut()
-        _s.flash ('Your token is invalid. It may have expired. Please try again')
-        return _s.redirect_to ('forgot')
+            _s.loggedInRecently (_s._serve)(_s.ssn['_userID'], newTok)
+        else:
+            tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
+            try:
+                uid, oldTok = tokData
+                user = m.User.byUid(uid)
+                if user:
+                    newTok = u.newPasswordToken()
+                    if user.validate(oldTok, newTok):
+                        _s._serve (uid, newTok)
+            except:
+                logging.exception('token data has unexpected structure? : %r', tokData)       
+                _s.logOut()
+                _s.flash ('Your token is invalid. It may have expired. Please try again')
+                _s.redirect_to ('forgot')
 
     def post (_s, token):
         logging.debug ('H_NewPassword POST handler called token = %s', token)
@@ -218,7 +225,8 @@ class H_NewPassword (b.H_Base):
                                 _s.logIn(user) # if user is already logged in, this will update the login timestamp
                                 #todo sendEmail("Your password has been changed")
                                 _s.flash ('Your password has been changed')
-                                return _s.redirect_to ('secure')
+                                _s.redirect_to ('secure')
+                                return 
             _s.flash ('Password not updated.  Please try again.')
         _s.redirect_to ('forgot')
 
