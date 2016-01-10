@@ -234,11 +234,12 @@ class UserBase (ndb.Model):
         # for l in traceback.format_stack():
             # logging.debug(l.strip())
         logging.debug('uid: %r' % uid)
-        u = _C.get_by_id (uid)
-        if not u:
-            logging.warning('invalid uid: %r' % uid)
-        return u
-        
+        if uid:
+            u = _C.get_by_id (uid)
+            if not u:
+                logging.warning('invalid uid: %r' % uid)
+            return u
+        return None
     # @classmethod
     # def _byAuthID (_C, authID):
         # '''authID is expected to be valid 
@@ -312,11 +313,10 @@ class UserBase (ndb.Model):
         return False
 
     def validate (_s, tok, newTok=''):
-        if _s.sameToken (tok):
-            _s.token = newTok
-            _s.modified = True
-            return True
-        return False
+        if not _s.sameToken (tok):
+            raise ValueError('tokens dont match')
+        _s.token = newTok
+        _s.modified = True
         
     def isValidated (_s):
         if _s.token == '':      # logged out

@@ -177,11 +177,11 @@ class H_NewPassword (b.H_Base):
     
     def _serve (_s, uid, newTok):
         logging.debug ('H_NewPassword serve  called')
-        assert uid, 'no uid!'
+        # assert uid, 'no uid!'
         data = (uid, newTok, _s.request.remote_addr)
-        verTok = cryptoken.encodeVerifyToken (data, 'q')
+        verTok = cryptoken.encodeVerifyToken (data, 'pw2')
         #url = _s.uri_for ('newpassword', token=verTok)
-        _s.serve ('resetpassword.html', {'token':verTok})
+        _s.serve ('resetpassword.html', token=verTok)
         
     def get (_s, token):
         logging.debug ('H_NewPassword GET handler called, token = %r', token)
@@ -192,11 +192,11 @@ class H_NewPassword (b.H_Base):
             tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
             try:
                 uid, oldTok = tokData
-                user = m.User.byUid(uid)
-                if user:
-                    newTok = u.newPasswordToken()
-                    if user.validate(oldTok, newTok):
-                        _s._serve (uid, newTok)
+                newTok = u.newPasswordToken()
+                if uid:
+                    user = m.User.byUid(uid)
+                    user.validate(oldTok, newTok)
+                _s._serve (uid, newTok)
             except:
                 logging.exception('token data has unexpected structure? : %r', tokData)       
                 _s.logOut()
