@@ -1,26 +1,15 @@
-{% import "macros.html" as m %}
+{% import "macros.html" as mcr %}
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <meta charset="utf-8">        
+        <meta charset="utf-8">
+		<!--meta id="my-data" data-nexturl="{{nexturl}}" 
+			Use meta tag data attributes to pass template data to js with eg:- var nextUrl = $('#my-data').data('nexturl');  -->
 		<title>{% block title %}Dhamma Map{% endblock %}</title>
 		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
 		<script src="../static/jquery.blockUI.js"></script>
-        <style>
-			input 	{ display : block; 	}
-			ul 		{ margin  : 0px; 	}
-			#flashes{ /*margin  : 20px;*/
-					  /*border  : 1px solid transparent;   stops jerks in $.slideUp() and $.slideDown() */
-					  background-color : pink;	
-					  /*display: none;*/
-					  }
-			#formdiv{ border  : 1px solid blue;
-					  padding : 0 20px 20px 20px;
-					  }
-			{% block mediaCSS %}
-			{% endblock %}
-        </style>
+		<link rel="stylesheet" type="text/css" href="../static/base.css">
     </head>
 	<body>
  		<noscript>
@@ -52,12 +41,10 @@
 					</p>
 				</footer>
 			</div>
-			<script src="../static/dhammamap.js"></script>
-			<script>
-				document.getElementById("js-only").style.display = "block";
-				{% block mediaJS %}
-				{% endblock %}    
+			<script> document.getElementById("js-only").style.display = "block";
 			</script>
+			{% block mediaJS %}
+			{% endblock %}    
         </div>   
 	</body>
 </html>

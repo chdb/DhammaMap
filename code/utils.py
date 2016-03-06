@@ -8,9 +8,21 @@ import os
 import base64
 from webapp2_extras import security
 import datetime as d
-import config
+#import config
 import random
-import string    
+import string  
+import webapp2 as wa2 
+
+def config(key):
+    '''Return the value of key in the app's config object. 
+    The data is initialised by the global cfg object defined in config module but global objects are not thread safe.
+    Suppose you have two modules creating two WSGIApplication's.
+    Then config() will return different objects because get_app() will return different instances in a threadsafe manner.  
+    The config obj is stored in the app. Therefore config() returns the right config for each app.
+    All globals should be made threadsafe in this way.'''
+    cfg = wa2.get_app().config
+    assert key in cfg, 'config missing key"%r"' % key 
+    return cfg[key]
 
 def utf8 (u):
     assert isinstance (u, unicode)
@@ -79,6 +91,7 @@ def dsNow():
     return int(t.time()*10) # deciSeconds since epoch.  
 
 def dtExpiry(secs):
+    logging.debug('secs = %r', secs)
     return d.datetime.now() + d.timedelta (seconds=secs)
     
 def validTimeStamp (timeStamp, maxAge):
@@ -86,6 +99,8 @@ def validTimeStamp (timeStamp, maxAge):
     assert maxAge is None or type (maxAge) is int
     if maxAge is None:
         return True
+    logging.debug('elapsed:  %d', sNow() - timeStamp)
+    logging.debug('maxAge:   %d', maxAge)
     return sNow() - timeStamp <= maxAge
 
 #def inCfgPeriod (datetime, period):
@@ -118,21 +133,36 @@ def sameStr (a, b): # a version of this is in python 3 and 2.7.7 as hmac.compare
         #logging.debug('r: %s', r)
     return r == 0
 
+#todo provide a raw token - they will be b64-encoded again 
+#because the token is part of the Kryptoken 
 def newToken():
-    r = os.urandom(15) # Todo: is this enough?  - should be plenty if we just want to avoid a clash on same machine 
-    return base64.b64encode(r) # 15/3*4 == 20 bytes
+    r = os.urandom(8) 
+    #return os.urandom(8) # Todo: is this enough?  - should be plenty if we just want to avoid a clash on same machine 
+    #todo Do we need to base64-encode? Surely the token will be wrappped in a crytoken which ill do it?
+    return base64.b64encode(r) 
+
+# class Verify:
+    # signup = True
+    # forgot = False
     
-def newSignupToken ():
-    return 'signUp' + newToken()
+# def newVerifyToken (b):
+    # assert type(b) is bool
+    # if   b == Verify.signup: prefix = 's'
+    # elif b == Verify.forgot: prefix = 'f'
+    # else: assert False
+    # return prefix + newToken()
+    
+def newSignUpToken ():
+    return 's' + newToken()
     
 def newPasswordToken ():
-    return 'pw1' + newToken()
+    return 'p' + newToken()
 
-# def newForgotToken ():
-    # return 'f' + newToken()
+def newForgotToken ():
+    return 'f' + newToken()
     
 def newSessionToken ():
-    return 'auth' + newToken()
+    return 'a' + newToken()
                                           
 import mailgun   #  if poss we should import mailgun in only one place   
 from google.appengine.api import mail      

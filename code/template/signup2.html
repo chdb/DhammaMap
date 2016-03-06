@@ -3,12 +3,13 @@
 {% block title %}Register a new user{% endblock %}
 
 {% block maincontent %}
+<div id="formdiv">
     <h1>Register a new user!
     </h1>
-    <form action="{{ submit_url }}" method="POST">
-		{{ m.input_csrf() }}
-        <label for="email">Email address</label>
-        <input type="text" name="email" >
+    <form action="/signup/x" method="POST">
+		{{ mcr.input_csrf() }}
+        <label for="ema">Email address</label>
+        <input type="text" name="ema" >
         <br>
         <label for="password">Password</label>
         <input type="password" name="password" >
@@ -21,4 +22,9 @@
         <br>
         <input type="submit" value="Create user" >
     </form>
+</div>
+{% endblock %}
+
+{% block mediaJS %}
+<!-- <script src="../static/dhammamap.js"></script> -->
 {% endblock %}

@@ -5,7 +5,6 @@
 from google.appengine.api import taskqueue
 #from google.appengine.ext.ndb import Rollback
 from widget import W
-#from models import Email, AuthKey, User, CredentialsError
 import models as m
 from Libs.user_agents import parse as ua_parse
 import basehandler as b
@@ -15,15 +14,16 @@ import cryptoken
 import utils as u
 import i18n as i
 
+import debug
 #import json
           
 #from os import path
 #import webapp2 as wa2
 #import time
 #import session
-#import config as myConfig
 #import httplib as http
 
+#tqt = 'foobar11'
 #------------------------------------
 class H_Home (b.H_Base):
 
@@ -44,7 +44,18 @@ class H_Home (b.H_Base):
                      # , body= 'Hi !'
                      ## , sender
                      # )
-                      
+                     
+        #from google.appengine.api import taskqueue
+        # p = {u'foo':u'bar'}
+        # u ='/some-handler'
+        # t = taskqueue.add(name=tqt, url=u, params=p)
+        
+        # d = t.extract_params()
+        # logging.debug('XXXXXXXXXXXXXXXXXX task: %r', t)              
+        # logging.debug('XXXXXXXXXXXXXXXXXX payload: %r', t.payload)              
+        # logging.debug('XXXXXXXXXXXXXXXXXX params: %r', d)              
+        # logging.debug('XXXXXXXXXXXXXXXXXX url: %r', u)              
+        #_s.abort(422)
         _s.serve ('home.html')
         
 #------------------------------------
@@ -53,7 +64,9 @@ class H_NoCookie (b.H_Base):  # handles requests redirected here by decorator: @
     def get (_s):
         if _s.ssn:
             # ok - so there is a cookie in there now 
-            _s.ssn['rtt'] = u.msNow() - _s.ssn['ts'] # rtt: round trip time
+            if not 'rtt' in _s.ssn:
+                _s.ssn['rtt'] = u.msNow() - _s.ssn['ts'] # rtt: round trip time
+                logging.debug ('rtt set in ssn')
             url = _s.request.get('nextUrl')
             _s.redirect (u.utf8(url)) # go back to the page you first thought of
         else:
@@ -78,314 +91,173 @@ class H_Signup (b.H_Base):
         # if _s.isLoggedIn():
             # warn user she is currently logged in and will be logged out if she proceeds
             # _s.logOut()
+       
+        # task_queue = taskqueue.Queue('default')
+        # t = task_queue.delete_tasks_by_name(tqt)
+        # d = t.extract_params()
+        # logging.debug('XXXXXXXXXXXXXXXXXX task: %r', t)              
+        # logging.debug('XXXXXXXXXXXXXXXXXX payload: %r', t.payload)              
+        # logging.debug('XXXXXXXXXXXXXXXXXX params: %r', d)              
+
         _s.serve ('signup.html')
 
-    def post (_s):
-        tokid = u.newSignupToken()
-        logging.debug('signup token created: %s' % tokid)
-        em = _s.request.get ('email')
-        existed, authkey = m.AuthKey.getFromEmail (em, tokid)
-        if existed and authkey.verified():
-            msg = 'You have already signed up. If you need to change your account details, go to ...' #todo: edit page
-        else:
-            tokenStr = cryptoken.encodeVerifyToken (tokid, 'signUp')
-            verify_url = _s.uri_for ('signup_2', token=tokenStr, _full=True)
-            msg = '''To continue the sign up process, you need to register. Please click this link:
-                     <a href="{url}">{url}</a>'''.format (url=verify_url)
-            if existed: # but not yet verified
-                authkey.token = tokid
-                authkey.put()
-                msg = 'This account is not yet verified. Please try again! '+ msg  
-            logging.debug('sent  url = %s', verify_url)
-        _s.sendEmail(to=em, subject='Signing Up to Dhamma Map', html=msg)
-        _s.flash(msg)#todo: comment-out!
-        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
-                
+    @b.rateLimit
+    def post (_s, user):
+        ema = _s.getEma()
+        _s.ssn['ema'] = ema
+        _s.sendVerifyEmail (ema, 'signingUp')
+        return False, '/signup/msg' # False to block all fast repeats
+
+    def get2 (_s):
+        #TODO: COMMENT OUT the test flash :-
+        ema = _s.ssn['ema'] 
+        debug.show(_s,'signingUp', ema)
+        
+        _s.serve ('message.html', txt='An email has been sent to you.' )
+        
 #------------------------------------
-class H_Forgot (b.H_Base):
-
-    def get (_s):
-        _s.logOut()
-        _s.serve ('forgot.html')
-
-    def post (_s):
-        em = _s.request.get ('email')
-        tokid = u.newPasswordToken()
-        authkey = m.AuthKey.byEmail (em)
-        if authkey and authkey.verified():
-            authkey.token = tokid
-            authkey.put()
-            uid = _s.ssn.get ('_userID')
-            tok = cryptoken.encodeVerifyToken ((uid, tokid), 'pw1')
-            url = _s.uri_for ('newpassword', token=tok, _full=True)
-            msg = '''<a href="%s">Click here</a> to proceed to security questions before changing your password.
-                  '''% url
-            # todo: security questions
-        else:
-            url = _s.uri_for ('signup', _full=True) 
-            msg = '''This email address does not have an account at DhammaMap. 
-                     If you want to open an account please <a href="%s">click here</a>.
-                  '''% url                
-        _s.sendEmail (to=em, subject='Lost password to Dhamma Map', html=msg)
-        logging.info('sent email with for  url = %s', url)
-        _s.flash(msg)#todo: comment-out!
-        _s.serve ('message.html', txt='An email has been sent to you. Please follow the instructions.') 
-
-#------------------------------------
-class H_Signup_2 (b.H_Base):
+class H_SignupToken (b.H_Base):
     
     @b.cookies
-    def get (_s, token):
-        logging.debug ('signup_2 GET handler called')
+    def get (_s, token): # called by link
+        logging.debug ('SignupToken GET handler called')
         _s.logOut()
-        #logging.debug('signup token resent: %s' % token)
-        tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
-        logging.debug('signup token found: %s' % tokID)
-        if tokID:        
-            url = _s.uri_for ('signup_2', token=token)
-            _s.serve ('signup2.html', submit_url=url)
+        if _s.validVerifyToken (token, 'signUp'):
+            _s.serve ('signup2.html')#, submit_url=url)
         else:
-            _s.flash ('That link is invalid in some way. It might be too old.  Please try again.')
-            _s.serve ('signup.html') 
+            _s.redirect_to ('Signup')            
             
     def post (_s, token):
         _s.logOut()
-        tokID = cryptoken.decodeToken (token, _s.app.config, 'signUp')
-        logging.debug('signup token found: %s' % tokID)
-        if tokID:
-            praw = _s.request.get('password')
-            user = m.User.credSignup( tokID
-                                    , _s.request.get('email')
-                                    , pwdhash = u.passwordHString (praw)
-                                    , forename=_s.request.get('forename')
-                                    , lastname=_s.request.get('lastname')
-                                    , country = i.get_country_code(_s.request)
-                                    )
-            if user:
-                _s.logIn (user)
-                return _s.redirect_to ('secure')
-        
-            _s.flash ('The email is not valid for this link.  '
-            'It must be exactly the same as the one you used before. Please try again.')          
-        else:
-            _s.flash ('The token is invalid in some way. It might be too old.  Please try again.') # , 'signup1')           
-        _s.redirect_to ('signup')
-       
-#------------------------------------   
-class H_NewPassword (b.H_Base):
-    '''When anon user has lost password or auth user wants to change password'''
+        assert token == 'x'
+        praw = _s.request.get('password')
+        user = m.User.createFromEmail( ema     =_s.getEma()
+                                     , forename=_s.request.get('forename')
+                                     , lastname=_s.request.get('lastname')
+                                     , pwdhash = u.passwordHString (praw)
+                                     , country = i.get_country_code(_s.request)
+                                     )
+        if user:
+            _s.logIn (user)
+            return _s.redirect_to ('Secure')
     
-    def _serve (_s, uid, newTok):
-        logging.debug ('H_NewPassword serve  called')
-        # assert uid, 'no uid!'
-        data = (uid, newTok, _s.request.remote_addr)
-        verTok = cryptoken.encodeVerifyToken (data, 'pw2')
-        #url = _s.uri_for ('newpassword', token=verTok)
-        _s.serve ('resetpassword.html', token=verTok)
-        
-    def get (_s, token):
-        logging.debug ('H_NewPassword GET handler called, token = %r', token)
-        if not token:
-            newTok = u.newPasswordToken()
-            _s.loggedInRecently (_s._serve)(_s.ssn['_userID'], newTok)
-        else:
-            tokData = cryptoken.decodeToken (token, _s.app.config, 'pw1')
-            try:
-                uid, oldTok = tokData
-                newTok = u.newPasswordToken()
-                if uid:
-                    user = m.User.byUid(uid)
-                    user.validate(oldTok, newTok)
-                _s._serve (uid, newTok)
-            except:
-                logging.exception('token data has unexpected structure? : %r', tokData)       
-                _s.logOut()
-                _s.flash ('Your token is invalid. It may have expired. Please try again')
-                _s.redirect_to ('forgot')
-
-    def post (_s, token):
-        logging.debug ('H_NewPassword POST handler called token = %s', token)
-        #assert token is None
-        #logging.debug ('H_NewPassword POST handler called')
-        pw = _s.request.get ('password')
-        if not pw or pw != _s.request.get ('confirm_password'):
-            _s.flash ('passwords do not match') # also do this check client side
-        else:
-            token = u.utf8(_s.request.get ('t'))
-            data = cryptoken.decodeToken (token, _s.app.config, 'pw2')
-            if data:
-                uid, tid, ip = data
-                if uid:
-                    user = m.User.byUid(uid)
-                    if user:
-                        logging.debug ('H_NewPassword user found')
-                        if ip == _s.request.remote_addr:
-                            if user.validate(tid):
-                                user.setPassword (pw)
-                                _s.logIn(user) # if user is already logged in, this will update the login timestamp
-                                #todo sendEmail("Your password has been changed")
-                                _s.flash ('Your password has been changed')
-                                _s.redirect_to ('secure')
-                                return 
-            _s.flash ('Password not updated.  Please try again.')
-        _s.redirect_to ('forgot')
-
-#------------------------------------
-# class H_BadLogin (b.H_Base):
-    # def get (_s):
-        # logging.info ('OK login again' )
-        # _s.logOut()
+        _s.flash ('The email is not valid for this link.  '
+        'It must be exactly the same as the one you used before. Please try again.')          
+        #else:
+        #    _s.flash ('The token is invalid in some way. It might be too old.  Please try again.') # , 'signup1')           
+        # _s.redirect_to ('Signup')
        
-
-    # @b.taskqueueMethod
-    # def post (_s):
-        # logging.info ('do bad login result' )
-        # _s.logOut()
-        # _s.flash ('OK you can try again now.')
-        # _s.redirect_to ('login')
-        # _s.serve ('home.html') # ('login.html', {'wait':False})
-#------------------------------------
-# class H_Login (b.H_Base):
-
-    # @b.cookies
-    # def get (_s):
-        # _s.logOut()
-        # _s.serve ('login.html', {'wait':False})
-
-    # def post (_s):
-        # em = _s.request.get ('email')
-        # try:
-            # user = m.User.byCredentials (em, _s.request.get('password'))
-            # if user:
-                # _s.login(user) 
-                # logging.info ('LogGED in OK - NOW REDIRECT TO SECURE')
-                # return _s.redirect_to ('secure')
-                
-            # _s.flash ('you have not validated - please check your emails or...')
-        # except m.CredentialsError as e:
-            # logging.info ('Login failed for user %s because of CredentialsError', em)
-            # _s.flash ('The email address or the password is wrong. Please try again.')
-        # _s.serve ('login.html', {'wait':True})
-
-#------------------------------------
+#------------------------------------  
 class H_Login (b.H_Base):
 
     @b.cookies
     def get (_s):
         _s.logOut()
-        _s.serve ('login.html', wait=False)
-
-    # @b.rateLimit
-    # def post (_s, delay=5000):
-        # em = _s.request.get('email')
-        # pw = _s.request.get('password')
-        # logging.debug('~~~~~~ ######### em=%r'%em)
-        # logging.debug('~~~~~~ ######### pw=%r'%pw)
-        # user = m.User.byCredentials (em, pw)
-        # if user:
-            # _s.logIn(user) 
-            # _s.writeResponse (mode='ok', url='secure') 
-        # else:
-            # _s.flash ('log-in failed: either the username or the password is wrong.')
-            # _s.writeResponse (mode='wait', delay=delay)
+        _s.serve ('login.html')#, wait=False)
         
-    def post (_s):
-        ip = _s.request.remote_addr
-        em = _s.request.get('email')
-        pw = _s.request.get('password')
-        cf = _s.app.config ['loginRateLimit']
-        rl = b.RateLimiter (em, ip, cf)
-        if rl.ready (_s.ssn['rtt']):
-            rl.state, user = m.User.byCredentials (em, pw, ip)
-            if user:
-                _s.logIn(user) 
-            elif rl.state == 'locked': _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
-            elif rl.state == 'bad'   : _s.flash ('log-in failed: either the email or the password is wrong.')
-        elif rl.state == '429':
-            logging.warning('BruteForceAttack? throttle failure 429 for em:%s ip:%s %s pwd:%s', em, ip, pw)
-            _s.flash('http code: 429 Too Many Requests')
-        cfg = rl.lock()
-        if cfg:
-            if cfg.name == 'ip':
-                target ='you are now locked out'
-                m.BadIP.lock (ip, cfg.locktime)
-            else:
-                target ='this account is now locked'
-                if cfg.name == 'email':
-                    m.User.lock (em, cfg.locktime)
-                elif cfg.name == 'email & ip':
-                    m.User.lock (em, cfg.locktime)
-            _s.flash ('Too many log-in failures: %s for %s.' % (target, u.hoursMins(cfg.locktime)))
-            logging.warning('BruteForceAttack? start lock on %s: email:%s pwd:%s ip:%s',cfg.name, em, pw, ip)
-        logging.debug('login handler ##### delay: %d ms', rl.delay*100)
-        _s.writeResponse (mode=rl.state, delay=rl.delay*100) # 100 converts ds to ms
+    @b.rateLimit
+    def post (_s, **ka):
+        #ipa = _s.request.remote_addr
+        #ema = _s.request.get('email')
+        pwd = _s.request.get('password')
+        #cf = _s.app.config ['loginRateLimit']
+        #rl = b.RateLimiter (ema, ipa, cf)
+        #if rl.ready (_s.ssn['rtt']):
+        user = ka['user']
+        logging.debug('user = %r',user)
+        if user and m.User.byCredentials (user, pwd):
+            _s.logIn(user) 
+            return True, '/secure'
+        _s.flash ('Login failed: either the email or the password is wrong.')
+        return False, None
+            #_s.doLocking(rl, ema, pwd, ipa)
+        #logging.debug('login handler ##### delay: %d ms', rl.delay*100)
+   #     _s.ajaxResponse (mode=rl.state, delay=rl.delay*100, nextUrl='secure') # 100 converts ds to ms
         
-    # def post (_s):
-        # em = _s.request.get('email')
-        # pw = _s.request.get('password')
-        # logging.debug('~~~~~~ ######### em=%r'%em)
-        # logging.debug('~~~~~~ ######### pw=%r'%pw)
-        
-        # wait = _s.app.config['login_wait']
-        # rl = b.RateLimiter()
-        # if rl.ready (em, wait, _s.ssn['rtt']):
-            # state, user = m.User.byCredentials (em, pw)
-            # if state == 'locked':
-                # _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
-            # elif state == 'bad':
-                # _s.flash ('log-in failed: either the email or the password is wrong.')
-            # elif state == 'good':
-                # _s.logIn(user) 
-            # else: assert False, 'byCredentials() returned unexpected state: ' + state
-            # rl.state = state
-        # elif rl.state == '429':
-            # logging.warning('BruteForceAttack? login rate-limited for user: %s pwd: %s', em, pw)
-            # _s.flash('http code: 429 Too Many Requests')
-        # else:
-            # assert rl.state == 'wait'
-            
-        # cfg = _s.app.config['login_lock']
-        # if rl.lock (em, cfg):
-            # _s.flash ('Too many log-in failures: this account is now locked for a period.')
-            # logging.warning('BruteForceAttack? account locked for user: %s', em)
-            # user = m.User.byEmail(em) 
-            # user.lockoutexpiry = u.dtExpiry (cfg.locktime)
-            # user.put()
-        # logging.debug('state =  %s',rl.state)
-        # _s.writeResponse (mode=rl.state, delay=wait*100) # 100 converts ds to ms
-        
-# from functools import partial
-# do_four(partial(print_twice, str))
-        
-    # def authenticate(em, pw):
-        # state, user = m.User.byCredentials (em, pw)
-        # if state == 'locked':
-            # _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
-        # elif state == 'bad':
-            # _s.flash ('log-in failed: either the email or the password is wrong.')
-        # elif state == 'good':
-            # _s.logIn(user) 
-        # else: assert False, 'byCredentials() returned unexpected state: ' + state
-        # return state
-        
+#------------------------------------
+class H_Forgot (b.H_Base):
     
+    #@b.rateLimit
+    def post (_s): # we are using post not get because we dont want to pass the ema in the query string
+        ema = _s.getEma() 
+        logging.debug('################################### forgot post ema= %s',ema)
+        _s.serve ('forgot.html', email=ema)
+        
+    @b.rateLimit
+    def post2 (_s, **ka):
+        ema = _s.getEma()
+        _s.ssn['ema'] = ema#TODO: COMMENT OUT 
+        _s.sendVerifyEmail (ema, 'forgot')
+        return False, '/forgot' # False: all calls count towards a lockout  -  its always bad to forget yor password
+        
+    def get (_s):
+        #TODO: COMMENT OUT the test flash :-
+        ema = _s.ssn['ema'] 
+        debug.show(_s, 'forgot', ema)
+        #
+        _s.serve ('message.html', txt='An email has been sent to you.' )
+
+#------------------------------------
+ 
+class H_NewPassword (b.H_Base):
+    '''anon user has lost password 
+    or auth user wants to change password'''
+    
+    def _serve (_s, uid, newTok):
+        logging.debug ('H_NewPassword serve  called')
+        assert uid, 'no uid!'
+        data = (uid, newTok, _s.request.remote_addr)
+        verTok = cryptoken.encodeVerifyToken (data, 'pw1')
+        #url = _s.uri_for ('newpassword', token=verTok)
+        _s.serve ('resetpassword.html', token=verTok)
+        
+    def get (_s, token):
+        logging.debug ('H_NewPassword GET handler called, token = %r', token)
+        # if not token:
+            # newTok = u.newPasswordToken()
+            # _s.loggedInRecently (_s._serve)(_s.ssn['_userID'], newTok)
+        # else:
+        if _s.validVerifyToken (token, 'pw1'):
+            _s.serve ('resetpassword.html')#, submit_url=url)
+        else:
+            _s.redirect_to ('Forgot')
+
+    def post (_s, token):
+        logging.debug ('H_NewPassword POST handler called token = %s', token)
+        #assert token is None
+        #logging.debug ('H_NewPassword POST handler called')
+        pwd = _s.request.get ('password')
+        if not pwd or pwd != _s.request.get ('confirm_password'):
+            _s.flash ('passwords do not match') # also do this check client side
+            _s.serve ('resetpassword.html')
+        else:
+            # if user.validate(tid):
+            ema = _s.getEma()
+            user = m.User.resetPassword (ema, pwd)
+            _s.logIn(user) # if user is already logged in, this will update the login timestamp
+            #todo sendEmail("Your password has been changed")
+            _s.flash ('Your password has been changed')
+            _s.redirect_to ('Secure')
+            #return 
+            #_s.flash ('Password not updated.  Please try again.')
+
 #------------------------------------
 class H_Logout (b.H_Base):
 
     def get (_s):
         _s.logOut()
-        _s.redirect_to ('login')
+        _s.redirect_to ('Login')
 
 #------------------------------------
-class H_Auth (b.H_Base):
+class H_Secure (b.H_Base):
 
     @b.loggedIn
-    def get (_s, stoken=None):
+    def get (_s):#, stoken=None):
         #todo use stoken from the url, as a ssn token, when cookies are disabled
         #implement: in savesess() NoCookie = check when dummy? cookie is not coming back
         #              when NoCookie save ssn in stok in url 
         #           in getsess when NoCookie get ssn from stok in url
-        logging.debug('stoken: %s', stoken if stoken else '-')
+#        logging.debug('stoken: %s', stoken if stoken else '-')
         _s.serve ('secure.html')
         
 #------------------------------------
@@ -475,16 +347,51 @@ class H_AdminNewKeys (b.H_Base):
         W.addNewKeys()
 
 #------------------------------------
-class H_SendEmail (b.H_Base):
+class H_TQSendEmail (b.H_Base):
     #mailgunClient = mailgun.client (wa2.get_app().config)
     
-    @b.taskqueueMethod
+    @b.pushQueueMethod
     def post(_s):
         ka = dict(_s.request.POST.items())
-        ok = u.sendEmail(**ka)        
-        if _s.app.config['log_email']:
-            try:
-                m.Email.create (sent=ok, **ka)
-            except: # (apiproxy_errors.OverQuotaError, BadValueError):
-                logging.exception("Error saving Email Log in datastore")
- 
+        b.sendEmailNow (**ka)
+
+#------------------------------------
+
+class H_TQSendVerifyEmail (b.H_Base):
+
+    @b.pushQueueMethod
+    def post(_s):
+        mode= _s.request.get('mode') # 'signingUp' or 'forgot'
+        ema = _s.getEma()
+        logging.debug('mode = %r ema = %r',mode,ema)
+        signedUp = m.AuthKey._byEmail (ema)
+        if mode == 'signingUp':
+            subj = 'Signing Up to DhammaMap'
+            if signedUp: 
+                msg = _s.verifyMsg( 'There was a request to sign up with DhammaMap. '
+                                    'However you are already registered. If you need to change your account details, go to '
+                                    '<a href="%s">%s</a>. ', 'Home')
+            else: 
+                nonce = u.newSignUpToken()
+                msg = _s.verifyMsg( 'Please click this link: <a href="%s">%s</a>. '
+                                    'This will verify your email address so that you can continue the sign up process.'
+                                  , 'Signup-token', ema, nonce, 'signUp')
+        else:
+            assert mode == 'forgot'
+            subj = 'Lost password to DhammaMap'
+            if signedUp: 
+                nonce = u.newForgotToken()
+                msg = _s.verifyMsg( 'Click here <a href="%s">%s</a><br>'
+                                    'to proceed to security questions before changing your password.'
+                                  , 'NewPassword', ema, nonce, 'pw1') 
+                                    # todo: security questions
+            else:
+                msg = _s.verifyMsg( 'There was a request on DhammaMap for a forgotten password reset. However there is no account at DhammaMap with this email address. '
+                                    'If this request was not from you, please click here to alert us ... .' #todo contact/alert page
+                                    'If you want to open an account at DhammaMap please click here '
+                                    '<a href="%s">%s</a>. ', 'Signup')
+        #todo: comment-out!
+        debug.save (mode, ema, msg)
+        #
+        b.sendEmailNow (to=ema,subject=subj,html=msg)
+         

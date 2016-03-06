@@ -17,8 +17,7 @@ from session import SessionVw
 import cryptoken
 import i18n as i
 import utils as u
-from utils import utf8
-from models import User
+import models as m
 from jinja_boot import Jinja
 import json
 #from widget import W
@@ -30,64 +29,6 @@ import json
 
 # handler decorators ------------------------------------
 
-def rateLimit (fn): 
-    '''To detect and foil Brute-Force attacks - 
-    This decorator will issue HTTP response 429 'Too Many Requests' when the same request RECURS within nSeconds
-    Same means a requests from the same IP to the same handler -
-    Mechanism - Every request from a given IP, either creates or finds an entry in memcache for a given IP and Handler . 
-    Memcache deletes it nSeconds after creation. If an entry is found, a 429 is issued 
-    This enforces an IDLE time of nSeconds between successful requests. (Failed requests do not restart the clock )
-    EG Suppose you send requests every millisec. rq0 succeeds. Then rq1 - rq999 inc fail. But rq1000 will succeed!
-    '''
-    #def rate_limiter(fn):
-        
-    @wraps(fn)
-    def wrapper(h, *pa, **ka):
-        for i in pa: logging.debug('pa: %r', i)
-        for i in ka: logging.debug('ka: %r = %r', i, ka[i])
-        
-        nSeconds = h.app.config['loginDelay']
-        
-        
-        key = '%s:%s' % ( h.__class__.__name__
-                        , h.request.remote_addr or '' # ip address
-                        )
-        if memcache.add ( key
-                        , 1                 # arbitrary value
-                        , time=nSeconds     # expiry from memcache
-                        #, namespace='rate_limiting'
-                        ):
-            #assert 'delay' not in ka 
-            ka['delay'] = nSeconds * 1000
-            return fn(h, *pa, **ka)  # added - ok
-        # n = memcache.incr(key)
-        # if n:
-            # nSeconds += n
-            # logging.debug('nSeconds: %r', nSeconds)
-        
-        # not added - found in memcache   
-        if pa[0]:       
-            #logging.debug('arg0: %r', arg0)
-            assert pa[0] == '/ajax'
-            h.flash('http code: 429 Too Many Requests')
-            return h.writeResponse (mode='abort')        
-        return h.abort(429) #'Too Many Requests'
-    return wrapper
-    
-    # assert len(pa1) == 1 # decorator takes one optional arg 
-    # arg0 = pa1[0]
-    # if callable(arg0):
-        # return rate_limiter (arg0)
-    # nSeconds = arg0
-    # return rate_limiter
-    
-# class ExampleHandler(webapp2.RequestHandler):
-    # @rateLimitByIP(seconds_per_request=2)
-    # def get(_s):
-        # _s.response.write('Hello, webapp2!')
-        
-#...................................-
-    
 def cookies (fn):
     """ checks that the cookie is found
         - some failure reasons:
@@ -96,12 +37,13 @@ def cookies (fn):
           2) it cant be read because a) the user has disabled cookies on the browser
                                      b) the secure attribute is set but the channel is insecure  
           3) the user agent does not support cookies eg a webcrawler
-        redirecting to 'nocookie' will test again, and for case 1) or 2) it will work this time
+        redirecting to 'NoCookie' will test again, and for case 1) or 2) it will work this time
         """
     def _cookies (h, *pa, **ka):        # h is for handler
-        assert isinstance(h.ssn, SessionVw)  
         if h.ssn: 
-            return fn (h, *pa, **ka)    #ok theres a cookie, so proceed   
+            assert isinstance(h.ssn, SessionVw) 
+            if 'rtt' in h.ssn:
+                return fn (h, *pa, **ka)    #ok theres a cookie, so proceed   
         
         # no browser cookie so try again with 2 redirects: 1st to no-cookie, 2nd back to original url 
         h.ssn['lang'] = i.i18n().locale
@@ -110,86 +52,112 @@ def cookies (fn):
         qs  = h.request.query_string
         if qs:
             url += u'?' + qs
-        h.redirect_to('nocookie', nextUrl=url) # handler will test again
+        h.redirect_to('NoCookie', nextUrl=url) # handler will test again
 
     return _cookies
 
-#...................................-
-def loggedIn (fn):
-    """ Checks that there's an auth user. """
-    @cookies
-    def _loggedin (h, *pa, **ka):
-        if h.ssn.isLoggedIn (h.user, h.request.remote_addr):
-            logging.info('XXXXXXXXXXXXX ok - logIn proceed ')
-            return fn (h, *pa, **ka)    #ok, proceed   
-        h.redirect_to ('login', ajax='a')         # fail
+#..................................................................
+def logSsn(d):
+    for k,v in d.iteritems():
+        logging.debug ('ssn: %s  =  %r', k, v)
         
-    return _loggedin
+def rateLimit (fn):
+    @cookies 
+    def _rateLimit (h, *pa, **ka):        # h is for handler
+        assert h.__class__.__name__.startswith('H_')
+        hlr = h.__class__.__name__[2:]
+        ipa = h.request.remote_addr
+        ema = h.getEma()
+        params = {}
+        rlt = RateLimiter (ema, ipa, hlr)
+      #  logSsn(h.ssn)
+        if rlt.ready (h.ssn['rtt']):
+            try:
+                assert 'user' not in ka
+                assert ka == {}
+                ka['user'] = m.User.byEmail (ema, ipa, hlr)
+            except m.Locked:
+                h.flash ('%s failed: this account is locked.  Please wait ... and try later.' % hlr)
+            else:
+                ok, next = fn(h, *pa, **ka) # CALL THE HANDLER
+                lock = rlt.try_(ok)
+                if lock:
+                    name, duration = lock
+                    logging.debug('xxxxxxxxxxxxxxxxxxxxxxxxxxx LOCK XXXXXXXXXXXXXXXX')
+                    if name == 'ipa': # repeated bad attempts with same ipa but diferent ema's
+                        kStr,mode,msg = ipa,'Local','you are now locked out'
+                    elif name == 'ema_ipa':# repeated bad attempts with same ema and ipa
+                        kStr,mode,msg = ema,'Local','this account is now locked'
+                    elif name == 'ema': # repeated bad attempts with same ema but diferent ipa's
+                        kStr,mode,msg = ema,'Distributed','this account is now locked'
+                    m.Lock.set (kStr, duration, hlr)
+                    h.flash ('Too many %s failures: %s for %s.' % (hlr, msg, u.hoursMins(duration)))
+                    pwd = h.request.get('password')
+                    logging.warning('%s BruteForceAttack! on %s page: start lock on %s: ema:%s pwd:%s ipa:%s',mode, hlr, name, ema, pwd, ipa)
+                elif next: 
+                    params['nextUrl'] = next
+        elif rlt.state =='429':
+            pwd = h.request.get('password')
+            logging.warning('BruteForceAttack? throttle failure 429 for ema:%s ipa:%s %s pwd:%s', ema, ipa, pwd)
+            h.flash('http code: 429 Too Many Requests')
+        elif rlt.state =='wait':
+            params['delay'] = rlt.delay*100   # 100 converts ds to ms
+        h.ajaxResponse (**params) 
+        #todo: instead of auto unlock after n=locktime seconds, after n send user and email with unlock link 
 
-#...................................-
-def loggedInRecently (fn):
-    """ Checks if the auth session started recently. 
-        (for handlers of sensitive operations eg change email or reset password) 
-    """
-    @loggedIn 
-    def _loggedinRecently (h, *pa, **ka):
-        if h.ssn.hasLoggedInRecently (h.app.config ['maxAgeRecentLogin']):
-            return fn (h, *pa, **ka)   #ok, proceed      
-        h.redirect_to ('login', ajax='a')        #fail
-
-    return _loggedinRecently
-
-#...................................-
-def taskqueueMethod (handler):
-    """ Decorator to indicate that this is a taskqueue method and applies request.headers check
-    """
-    def _taskqueue(h, *pa, **ka):
-        """ Check, if in Staging or Production, that h is being executed by Taskqueue 
-            If not, allow run in localhost calling the url
-        """
-        if h.request.headers.get('X-AppEngine-TaskName') is None \
-        and config.get('environment') == "production" \
-        and not users.is_current_user_admin():
-            return h.error(403) #Forbidden
-        return handler(h, *pa, **ka)
-
-    return _taskqueue
-
-#------------------------------------
+    return _rateLimit
+#..................................................................
 # NB 'bad' in context of the RateLimiter means a request will count towards the lockout count.
 # The handler determines which requests are 'bad'. 
 # Only failed logins are 'bad' requests to rate-limited login handler 
 #... but all requests to rate-limited forgot handler and signup handler are 'bad' 
 # because any rapid sequence of requests to those handlers is suspect
 
-## forgot and signup handlers need to wait on the email but lock on the ip 
 class RateLimiter (object):
                 
-    def __init__(_s, em, ip, cfg):
+    def __init__(_s, ema, ipa, hlr):
+        
+        def _initDelay (minWait):
+            _s.delay = minWait # ds
+            for key, diff, cf in _s.monitors.itervalues():
+                nBad = _s._get (key, diff) [0]
+                if nBad:
+                    #logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
+                    _s.delay += cf.delayFn(nBad)
+            #logging.debug('delay = %d ms',_s.delay * 100)
+        
+        def _initMonitors (ema, ipa, hlr):
+        
+            def _insert (name, key, diff):
+                assert name in lCfg
+                _s.monitors[name] = ('L:'+hlr+':'+key, diff, lCfg[name])
+
+            cfg = u.config(hlr)
+            lCfg = cfg.lockCfg
+            _s.monitors = {}
+                    #name     ,key  ,diff
+            _insert ('ema_ipa',_s.ei,None)
+            _insert ('ema'    ,ema  ,ipa )
+            _insert ('ipa'    ,ipa  ,ema )       
+            #logging.debug('monitors = %r',_s.monitors)
+            return cfg
+        
         _s.state = None
-        _s.ei = em + ip
-        _s.mc = memcache.Client()
-        _s.delay = cfg.minDelay # ds
-        _s.monitors = []
-        if 'ei' in cfg.locks:
-            _s.monitors.append((_s.ei, None, cfg.locks['ei']))
-        if 'em' in cfg.locks:
-            _s.monitors.append((em, ip, cfg.locks['em']))
-        if 'ip' in cfg.locks:
-            _s.monitors.append((ip, em, cfg.locks['ip']))
-        _s.monitors = [('L:'+ k, d,c) for (k,d,c) in _s.monitors]    
-        for key, diff, cf in _s.monitors:
-            val = _s.mc.get (key)
-            if val:
-                nBad = _s._nBad (val,diff) [0]
-                #logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
-                _s.delay += cf.delayFn(nBad)
-        logging.debug('delay = %d ms',_s.delay * 100)
-    
-    def _nBad (_s, val, diff):
-        dset = val[0]    if diff else None # set of distinct emails or ips
-        nBad = len(dset) if diff else val  # number of bad login attempts filtered under this key
-        return nBad, dset
+        _s.ei = ema + ipa
+        _s.mc = memcache.Client()        
+        cfg = _initMonitors (ema, ipa, hlr)
+        _initDelay (cfg.minDelay)       
+
+    def _get (_s, key, diff):
+        val = _s.mc.get (key)
+        if val:
+            if diff:# set of distinct emails or ips
+                dset, exp = val
+                nBad = len(dset) # number of bad login attempts under this key
+                assert nBad > 0
+                return nBad, dset, exp
+            return val, None, None  # in this case val is nBad
+        return None, None, None  
             
     def ready (_s, rtt):
        # _s.delay += minDelay
@@ -200,8 +168,8 @@ class RateLimiter (object):
         if expiry:
             _s.mc.delete (key)
             if expiry <= now:
-                _s.state = 'go' 
-                return True #handler state 'go':-> 'good' | 'bad' | 'locked'
+                _s.state = 'good' 
+                return True #handler state 'good':-> | 'bad' | 'locked'
             _s.state = '429'
         else: # key not found 
             _s.state = 'wait' 
@@ -209,47 +177,97 @@ class RateLimiter (object):
             _s.mc.set (key, now+_s.delay, exp)  # ... but because rtt / 100 to convert ms to ds, maxLatency(ds) = rtt(ms) [!] - IE do nothing!
         return False                                   
 
-    def lock (_s):
+    def try_ (_s, ok):
         '''Updates the monitors which are configured for this RateLimiter. 
-        Return None or if a lock is triggered, the sub-cfg for it.  
-        If more than one is triggered returns only last one in cfg.
+        Return None or if a lock is triggered, the cfg for it.  
         '''
-        assert _s.state, 'Must call ready() before calling lock()'
-        good = _s.state == 'good'
-        bad  = _s.state == 'bad'
-        lockNow = None
-        if good or bad:
-            for key, diff, cfg in _s.monitors:
-                #key = 'L:'+ key
-                val = _s.mc.get (key)
-                if val:
-                    nBad, dset = _s._nBad (val,diff)
-                    if good:
-                        if cfg.bGoodReset:
-                            _s.mc.delete (key)
-                    elif bad:   
-                        if nBad < cfg.maxbad:
-                            logging.debug('same %s count = %d', cfg.name, nBad)
-                            if diff:
-                                if diff not in dset:
-                                    dset.add(diff)
-                                    exp = val[1]
-                                    _s.mc.set (key, val, exp) # keep same exp time
-                                logging.debug('dset: %r', dset)
-                            else: _s.mc.incr (key)
-                        else: 
-                            logging.debug('same %s count = %d  Lock!', cfg.name, nBad)
-                            _s.mc.delete (key)
-                            lockNow = cfg # lock the account in ndb
-                else:
-                    if bad:
-                        #logging.debug('ts: %x', u.dsNow())
-                        #logging.debug('period: %x', cfg.period)
-                        exp = u.sNow() + cfg.period #need use absolute time
-                        #logging.debug('exp: %x', exp)
-                        val = (set([diff]), exp) if diff else 1 # diff set needs a tuple so it knows the expiry 
-                        _s.mc.set (key, val, exp)
-        return lockNow
+        def update (lockname):
+            found = False
+            lock = None
+            key, diff, cfg = _s.monitors[lockname]
+            nBad, dset, exp = _s._get (key, diff)
+            if nBad:
+                found = True     
+                if ok: # the user result
+                    if cfg.bGoodReset:
+                        _s.mc.delete (key)
+                else:   
+                    if nBad < cfg.maxbad:
+                        logging.debug('same %s count = %d', lockname, nBad)
+                        if diff:
+                            assert diff not in dset
+                            dset.append(diff)
+                            _s.mc.set (key, val, exp) # set() needs explicit abs exp to keep to same exp time
+                            logging.debug('diffset: %r', dset)
+                        else: _s.mc.incr (key)        # incr() implicitly keeps same exp time
+                    else: 
+                        _s.mc.delete (key)
+                        logging.debug('duration =  %r secs!', cfg.duration)
+                        logging.debug('same %s count = %d  Locked for %r secs!', lockname, nBad, cfg.duration)
+                        lock = lockname, cfg.duration # ok so lock the account in ndb
+            elif not ok: #not found in mc so create it
+                #logging.debug('ts: %x', u.dsNow())
+                #logging.debug('period: %x', cfg.period)
+                exp = u.sNow() + cfg.period #need use absolute time to keep same exp time when calling mc.set
+                #logging.debug('exp: %x', exp)
+                val = ([diff], exp) if diff else 1 # diff set needs a tuple so it knows the expiry 
+                _s.mc.set (key, val, exp)
+            return found, lock
+        
+        assert _s.state == 'good', 'Must call ready() before calling try_()'
+        found, lock = update('ema_ipa')
+        if not found:
+            found, lock = update('ema')
+            found, lock = update('ipa')
+        return lock
+#------------------------------------
+        
+def loggedIn (fn):
+    """ Checks that there's an auth user. """
+    @cookies
+    def _loggedin (h, *pa, **ka):
+        if h.ssn.isLoggedIn (h.user, h.request.remote_addr):
+            logging.debug('XXXXXXXXXXXXX ok - logIn proceed ')
+            return fn (h, *pa, **ka)    #ok, proceed   
+        h.redirect_to ('Login')         # fail
+        
+    return _loggedin
+
+#...................................-
+def loggedInRecently (fn):
+    """ Checks if the auth session started recently. 
+        (for handlers of sensitive operations eg change email or reset password) 
+    """
+    @loggedIn 
+    def _loggedinRecently (h, *pa, **ka):
+        if h.ssn.hasLoggedInRecently (u.config('maxAgeRecentLogin')):
+            return fn (h, *pa, **ka)   #ok, proceed      
+        h.redirect_to ('Login')        #fail
+
+    return _loggedinRecently
+
+#...................................-
+def pushQueueMethod (taskhandler):
+    """ Decorator to check that this is a taskqueue method using request.header
+    """
+    def _taskqueue(h, *pa, **ka):
+        """ Check, if in Staging or Production, that h is being executed by Taskqueue 
+            Otherwise, allow run in localhost calling the url
+        """
+        if h.request.headers.get('X-AppEngine-TaskName'):
+            assert h.request.path.startswith('/tq')
+        elif u.config('Env') == 'Prod': 
+            if not users.is_current_user_admin():   # we cant use this test in devServer or if logged-in as admin 
+                logging.warning('Someone hacking a task url? pushQueueMethod does not have taskname header')  
+                return h.error(403) #Forbidden
+        try:
+            return taskhandler(h, *pa, **ka)
+        except (TransientError, DeadlineExceededError):
+            raise # keep trying! (Exceptions in Push Queue Tasks are caught by the system and retried with exp backoff.)
+        except: 
+            logging.exception("Task Failed:") #other exceptions - just give up!
+
+    return _taskqueue
 
 #------------------------------------
 class ViewClass:
@@ -269,32 +287,82 @@ class H_Base (wa2.RequestHandler):
         _s.view = ViewClass()
         _s.localeStrings = i.getLocaleStrings(_s) # getLocaleStrings() must be called before setting path_qs in render_template()
 
+    def getEma (_s):
+        ema = _s.request.get('ema')
+        # sanity check: email validation is done client side using MailGun API
+        logging.debug('ema = %s', ema)
+        if len(ema) < 5:
+            _s.abort(422) # Unprocessable Entity 
+        if '@' not in ema:
+            _s.abort(422) # Unprocessable Entity 
+        return ema
+    
+    # def decodeToken (token, type):
+    # try:
+            # return 
+                    
+        # except Base64Error:
+            # logging.warning ('invalid Base64 in %s Token: %r', type, token)
+        # except:
+            # logging.exception('unexpected exception decoding %s token : %r', type, token)  
+            
+        
+    def validVerifyToken (_s, token, type):
+        data, expired = cryptoken.decodeToken (token, type)
+        if expired:
+            #if _s.logOut():
+            _s.flash ('This token has expired. Please try again.')
+        else:
+            try:
+                ema, tok = data
+                logging.debug('ema found: %s' % ema)
+                logging.debug('%s token found: %s', type, tok)
+                if b.tqCompare (ema, tok,'tok'):
+                    return True
+            except:
+                logging.exception('token data has unexpected structure? : %r', tokData)       
+            _s.flash ('Your token is invalid. Please try again')
+        return False
+
     def logIn (_s, user):
         _s.ssn.logIn (user, _s.request.remote_addr)
          
     def logOut (_s):
-        _s.ssn.logOut (_s.user)
+        return _s.ssn.logOut()
         
     # @webapp2.cached_property
-    # def jinja2 (_s):
+    # def jinja2 (_s):  
         # return jinja2.get_jinja2 (factory=jinja_boot.jinja2_factory, app=_s.app)
 
-    @wa2.cached_property
+    @property
     def ssn (_s):
-        """ Shortcut to access the current session."""
-        sn = _s.request.registry['session'] = SessionVw(_s)
+        """access to the current session."""
+        
+        sn = _s.request.registry.get('session')
+        if not sn:
+           sn =_s.request.registry['session'] = SessionVw(_s)
+        if sn.expired:
+            if sn.logOut():
+                _s.flash ('This session has expired. Please log in again.')
         return sn
 
     #override wa2.RequestHandler.dispatch()
     def dispatch (_s):
-        # try:
-        try: # csrf protection
+        try: 
+        # try:# csrf protection
             if _s.request.method == "POST" \
-            and not _s.request.path.startswith('/taskqueue'):
-                token = _s.ssn.get('_csrf_token')
-                if not token \
-                or token != _s.request.get('_csrf_token'):
-                    _s.abort(403) # 'Forbidden'
+            and not _s.request.path.startswith('/tq'): # tq indicates a TaskQueue handler: they are internal therefore not required to have csrf token
+                ssnTok  = _s.ssn.get('_csrf_token')
+                postTok = _s.request.get('_csrf_token')
+                if (not ssnTok  # toks differ or if both are the same falsy
+                or  ssnTok != postTok):
+                    logging.warning('path = %r',_s.request.path)
+                    logging.warning('ssn  csrf token = %r',ssnTok)
+                    logging.warning('post csrf token = %r',postTok)
+                    logging.warning('CSRF attack or bad or missing csrf token?')
+                    wa2.abort(403) # 'Forbidden'
+                    #_s.response.set_status(403)
+    
             wa2.RequestHandler.dispatch (_s) # Dispatch the request.this is needed for wa2 sessions to work
         finally:
             u = _s.user
@@ -307,8 +375,9 @@ class H_Base (wa2.RequestHandler):
     @wa2.cached_property
     def user (_s):
         uid = _s.ssn.get('_userID')
+        logging.debug('xxxxxxxxxx ssn = %r',_s.ssn)
         if uid:
-            return User.byUid (uid)
+            return m.User.byUid (uid)
         return None
 
     def flash(_s, msg):
@@ -316,18 +385,20 @@ class H_Base (wa2.RequestHandler):
         _s.ssn.addFlash (msg)
          
     def get_fmessages (_s):
+        fmsgs_html = u''
         f = _s.ssn.getFlashes()
         #logging.info('>>>>>>>>>>>>> ok added fmsgs: %r' % f)  
-        fmsgs_tmpl = Template ("""
-{%- if fmessages -%}
-    {%- for fmsg in fmessages -%}
-        <li>{{ fmsg.0 }}</li>
-    {%- endfor -%}
-{%- endif -%}                  """)
-        fmsgs_html = fmsgs_tmpl.render (fmessages= f) # _s.ssn.getFlashes())
-        # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' % fmsgs_html)  
-        # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' %  str(fmsgs_html))  
-        return utf8(fmsgs_html)
+        if f:
+            fmsgsTmpl = Template (  '{%- if fmessages -%}'
+                                        '{%- for fmsg in fmessages -%}'
+                                            '<li>{{ fmsg.0 }}</li>'
+                                        '{%- endfor -%}'
+                                    '{%- endif -%}'
+                                 )
+            fmsgs_html = fmsgsTmpl.render (fmessages= f) # _s.ssn.getFlashes())
+            # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' % fmsgs_html)  
+            # logging.info('>>>>>>>>>>>>> ok tmplate fmsgs: %r' %  str(fmsgs_html))  
+        return u.utf8(fmsgs_html)
 
     def serve (_s, filename, **ka):
         ka['user'] = _s.user
@@ -344,7 +415,7 @@ class H_Base (wa2.RequestHandler):
         #_s.response.out.write (template.render (viewpath, params))
         _s.response.write (Jinja().render (filename, ka))
 
-    def writeResponse (_s, **ka):
+    def ajaxResponse (_s, **ka):
         '''use this for ajax responses'''
         ka['msgs'] = _s.get_fmessages()
         resp = json.dumps (ka)
@@ -374,18 +445,41 @@ class H_Base (wa2.RequestHandler):
         #_s.redirect_to('home')
         # replace with redirect
         #_s.serve ('message.html', {'message': msg})
+    def verifyMsg (_s, msg, route, ema=None, nonce=None, tt=None): #todo use same string for tt as for route and simplifycode!
+        assert bool(nonce) == bool(tt),'theres a nonce iff theres a tt'
+        assert bool(nonce) == bool(ema),'theres a nonce iff theres a ema'
+        if nonce:
+            tqSave (ema, nonce,'tok')
+            tok = cryptoken.encodeVerifyToken ((ema, nonce), tt)
+            url = _s.uri_for (route, token=tok, _full=True)
+        else:
+            url = _s.uri_for (route, _full=True)    
+        return msg % (url,url)
         
+    def sendVerifyEmail (_s, ema, mod):
+        taskqueue.add ( url=_s.uri_for('TQSendVerifyEmail')
+                      , params= {'ema':ema
+                                ,'mode' :mod  
+                                }
+                      , queue_name='mailSender' #todo use a different Q  so it can have different config. Possible Disadvantage: might spin up extra instance?
+                      #, countdown=5  # wait at least this (secs) before executing task
+                      )
+        logging.debug ('sent verify email to taskqueue' )
+
     def sendEmail (_s, **ka):  
-        assert 'to'     in ka
-        assert 'subject'in ka
-        assert 'body'   in ka  \
-            or 'html'   in ka
-        # mailgun mail can also have these:   attachment inline
-        # appengine mail can also have these: attachments reply_to  and also extra headers eg {List-Unsubscribe On-Behalf-Of etc}
+        assert  'to'     in ka
+        assert  'subject'in ka
+        assert( 'body'   in ka 
+             or 'html'   in ka )
+        # mailgun mail can also have these params/headers:   attachment inline
+        # appengine mail can also have these: attachments reply_to  
+        #          and also extra headers eg  List-Unsubscribe On-Behalf-Of
         # both can have these:                cc bcc 
-        
-        if not 'sender' in ka:
-            ka['sender'] = 'chdb@blueyonder.co.uk'#'sittingmap@gmail.com'
+        html = ka.get('html')
+        if html and not html.endswith('\n'):
+            html += '\n'
+       # if not 'sender' in ka:
+       #     ka['sender'] = 'chdb@blueyonder.co.uk'#'sittingmap@gmail.com'
             
         # sender = params.get('sender').strip()
         ##todo this block is all about checking and setting static data so run it at startup eg in main.py 
@@ -399,12 +493,86 @@ class H_Base (wa2.RequestHandler):
                 # sender = "%s <no-reply@%s.appspotmail.com>" % (app_id, app_id)
         # params['sender'] = sender
 
-        logging.info ('send to taskqueue' )
-        taskqueue.add ( url=_s.uri_for('taskqueue-sendEmail')
+        logging.debug ('send email to taskqueue' )
+        taskqueue.add ( url=_s.uri_for('TQSendEmail')
                       , params=ka
                       , queue_name='mailSender'
-                      , countdown=5
+                      , countdown=5 # wait at least this (secs) before executing task
                       )
 
+    # def doLocking (_s, rl, ema, pw, ipa):
+        # if   rl.state == 'locked': _s.flash ('log-in failed: this account is locked.  Please wait ... and try later.')
+        # elif rl.state == 'bad'   : _s.flash ('log-in failed: either the email or the password is wrong.')
+        # elif rl.state == '429':
+            # logging.warning('BruteForceAttack? throttle failure 429 for ema:%s ipa:%s %s pwd:%s', ema, ipa, pw)
+            # _s.flash('http code: 429 Too Many Requests')
+        # name, locktime = rl.try_() # try_() is a noop and returns None,None unless rl.state=='good' or 'bad'
+        # if name:
+            # if name == 'ipa':
+                # m.BadIP.lock (ipa, locktime)
+                # attack,msg = 'Local','you are now locked out'
+            # elif name == 'ema_ipa':
+                # m.User.lock (ema, locktime)
+                # attack,msg = 'Local','this account is now locked'
+            # elif name == 'ema':
+                # m.User.lock (ema, locktime)
+                # attack,msg = 'Distributed','this account is now locked'
+            # _s.flash ('Too many log-in failures: %s for %s.' % (msg, u.hoursMins(locktime)))
+            # logging.warning('%s BruteForceAttack! start lock on %s: email:%s pwd:%s ipa:%s',attack ,name, ema, pw, ipa)
+            
+            #todo: instead of auto unlock after n=locktime seconds, after n send user and email with unlock link 
+#import datetime
+
+def sendEmailNow (**ka):  
+    ok = u.sendEmail(**ka)        
+    if ok and u.config('recordEmails'):
+        try:
+            m.SentEmail.create (**ka)
+        except: # (apiproxy_errors.OverQuotaError, BadValueError):
+            logging.exception("Error saving SentEmail in datastore")
+
+            
+def tqSave (tag_, nonce, pname):
+    q = taskqueue.Queue('pullq')
+    #eta_ = datetime.datetime.now()
+    tasks = q.lease_tasks_by_tag(1, 1000, tag=tag_)
+    if tasks:
+        q.delete_tasks(tasks)
+        logging.info('Deleting %d old tasks for r %s!', len(tasks), tag_)
+    t = taskqueue.Task(method='PULL', params={pname:nonce}, tag=tag_)#, eta=eta_)
+    # , countdown=5 wait at least this (secs) before executing task
+    q.add (t)
+    logging.debug('added task = %r', t)
+
+
+def tqCompare (tag_, token, pname):
+    '''if tag is found, check that its unique. 
+    Return whether its tok value is same as token, and delete if so.''' 
+    q = taskqueue.Queue('pullq')
+    tasks = q.lease_tasks_by_tag(0.1, 1000, tag=tag_)
+    logging.debug('tasks = %r', tasks)
+    n = len(tasks)
+    if n == 0:
+        logging.warning('Not one single pullq task for %s!', tag_) # todo try again message ?
+        return False
+    if n > 1:    
+        logging.warning('Multiple (%d) pullq task for %s!', n, tag_)
+    # GAE Bug? What does ETA really mean? For push queues its clearly the earliest time to start executing - should be ETE or ETS ?
+    #           but for Pull queues it seems to be lease expiry time E the latest possible time to finish executing --  LTE ?
+    # If we find multiple tasks for a tag, (there shouldnt be but in case ...) we want to read the most recent one and discard the others.
+    # From Docs and StackOverflow it seems that we should use eta which we can optionally set (it should default to when the Task was created)
+    # and not use the list ordering (which is unspecified in Docs )
+    # However in devServer at least, the eta seem to be set to the time of lease expiry.  (current_time + lease_time)
+    # and so all the leased tasks seem to always have the same eta.
+    # todo: test this on env:prod and if necessary on creating a Task, pass in a creation timestamp as a param
+    p = tasks[n-1].extract_params() # There should only be one but however many there are, we choose the last one ...
+    logging.debug('params found: %r' % p)
+    nonce = p[pname]
+    if u.sameStr (token, nonce):        
+        q.delete_tasks(tasks)       # .. and then delete them all
+        return True
+    logging.warning('url   token has: %s', token)
+    logging.warning('pullq tasks has: %s', nonce)
+    return False
 
 #------------------------------------

@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import os
 import json
-import utils
+import utils as u
 import widget as W
 import logging
 
@@ -16,20 +16,20 @@ from base64 import urlsafe_b64encode\
 class Base64Error (Exception):
     '''invalid Base64 character or incorrect padding'''
 
-def decodeToken (token, cfg, expected):
+def decodeToken (token, expected):
     try:
         td = _decode (token)
-        # if expected:
-            # tt = _tokenType (expected)
-        if td.valid (cfg, expected):
+        valid, expired = td.valid (expected)    
+        if valid:
             if expected == 'session':
                 td.data['_ts'] = td.timeStamp
-            return td.data  
+        return td.data, expired  
+                    
     except Base64Error:
-        logging.warning ('invalid Base64 in Token: %r', token)
+        logging.warning ('invalid Base64 in %s Token: %r', type, token)
     except:
-        logging.exception('unexpected exception on decoding token: %r', token)       
-    return None
+        logging.exception('unexpected exception decoding %s token : %r', type, token)  
+    return None, False
     
 def encodeVerifyToken (data, tt):
    # tt = _tokenType (tt)
@@ -39,19 +39,17 @@ def encodeVerifyToken (data, tt):
                  ], 'invalid TokenType: %s' % tt
     return _encode (tt, data)    
     
-def encodeSessionToken (ssn, user=None):
+def encodeSessionToken (ssn):#, user=None):
     data = dict(ssn)
-    if user:
-        uid = user['_id']
-        data ['_u'] = dict(user)
-        return _encode ('auth', data, uid)
+    
+    if '_userID' in ssn:
+        return _encode ('auth', data)
     return _encode ('anon', data)
 
 TokenTypes = ( 'anon'
              , 'auth'
              , 'signUp'
              , 'pw1'
-             , 'pw2'
              )
 def _tokenTypeCode (tt): return TokenTypes.index(tt)
 def _tokenType (code):   return TokenTypes [code]
@@ -59,43 +57,46 @@ def _tokenType (code):   return TokenTypes [code]
         
 class _TokenData (object):
 
-    def __init__ (_s, token, tt, obj, bM, ts, uid=None):
-        _s.bMac  = bM  
+    def __init__ (_s, token, tt, obj, bM, ts):
+        _s.badMac  = bM  
         _s.tokenType = tt  
         _s.timeStamp = ts
         _s.token = token 
-        _s.uid   = uid
         _s.data  = obj
                  
-    def maxAge (_s, cfg): 
-        if   _s.tokenType =='anon'  : return cfg['maxIdleAnon']
-        elif _s.tokenType =='auth'  : return cfg['maxIdleAuth']
-        elif _s.tokenType =='signUp': return cfg['maxAgeSignUpTok']
-        elif _s.tokenType =='pw1'   : return cfg['maxAgePasswordTok']
-        elif _s.tokenType =='pw2'   : return cfg['maxAgePassword2Tok']
+    def maxAge (_s): 
+        if   _s.tokenType =='auth'  : return u.config('maxIdleAuth')
+        elif _s.tokenType =='signUp': return u.config('maxAgeSignUpTok')
+        elif _s.tokenType =='pw1'   : return u.config('maxAgePasswordTok')
         else: raise RuntimeError ('invalid token type')
                 
-    def valid (_s, cfg, expected): 
-        """Checks encryption validity and expiry: whether the token is younger than maxAge seconds.
-        Use neutral evaluation pathways to beat timing attacks.
-        NB: return only success or failure - log shows why it failed but user mustn't know ! 
+    def valid (_s, expected): 
+        """ Checks encryption validity and expiry: whether the token is younger than maxAge seconds.
+            Use neutral evaluation pathways to beat timing attacks.
+            NB: return only success or failure - log shows why it failed but user mustn't know ! 
         """
-        btt = (_s.tokenType == 'anon' \
-            or _s.tokenType == 'auth') \
-        if expected == 'session' else   \
-              (_s.tokenType == expected) 
-        bData = _s.data is not None #  and (type(_s.data) == dict)
-        bTS = utils.validTimeStamp (_s.timeStamp, _s.maxAge(cfg))
-        
+        if expected == 'session':
+            badType = (_s.tokenType != 'anon'
+                   and _s.tokenType != 'auth') 
+        else:
+            badType =  _s.tokenType != expected
+        if _s.tokenType == 'anon':
+            expired = False
+        else:
+            expired = not u.validTimeStamp (_s.timeStamp, _s.maxAge())
+        badData = _s.data is None #  and (type(_s.data) == dict)
+        isValid = False
         # check booleans in order of their initialisation
-        if   not _s.bMac: x = 'Invalid MAC'
-        elif not btt    : x = 'Invalid token type:{} expected:{}'.format(_s.tokenType, expected)
-        elif not bData  : x = 'Invalid data object'
-        else:    
-            return bTS  #no logging if merely expired
-
-        logging.warning ('%s in Token: %r', x, _s.token)
-        return False 
+        if _s.badMac: x ='Invalid MAC'
+        elif badType: x ='Invalid token type:{} expected:{}'.format(_s.tokenType, expected)
+        elif badData: x ='Invalid data object'
+        else:
+            isValid = True
+            if expired:
+                logging.debug ('Token expired: %r', _s.token) #no warning log if merely expired
+        if not isValid:    
+            logging.warning ('%s in Token: %r', x, _s.token)
+        return isValid, expired 
  #.........................................          
 # Some global constants to hold the lengths of component substrings of the token         
 CH  = 1
@@ -138,46 +139,37 @@ def _deserialize (data):
         logging.exception(e)
         return None
 
-def _encode (tokentype, obj, uid=None):
+def _encode (tokentype, obj):
     """ obj is serializable session data
-        returns a token string of base64 chars with iv and encrypted tokentype, uid and data
+        returns a token string of base64 chars with iv and encrypted tokentype and data
     """
-    assert bool(uid) == (tokentype == 'auth')
     tt = _tokenTypeCode (tokentype)
-    now = utils.sNow()
     logging.debug ('encode tokentype = %r tt = %r',tokentype, tt)
-    if uid:                     
-        # docs say length of ndb.model.id is 64 bit so assume range is C signed int64 (not C unsigned int64)
-        assert uid >= -(2**63) ,'uid less than: -(2**63)'
-        assert uid <    2**63  ,'uid more than: (2**63)-1'
-        data = W._iBq.pack (now, tt, uid)   # ts + tt + uid
-    else:                                                
-        data = W._iB.pack (now, tt)         # ts + tt    
-    data  += _serialize (obj)               # ts + tt + [uid +] data
-    h20 = _hash (data, now)                                    
-    return urlsafe_b64encode (data + h20)   # ts + tt + [uid +] data + mac
+    now = u.sNow()
+    #logging.debug ('encode tokentype = %r tt = %r',tokentype, tt)
+    data = W._iB.pack (now, tt)             # ts + tt    
+    data  += _serialize (obj)               # ts + tt + data
+    h20 = _hash (data, now)                             
+    return urlsafe_b64encode (data + h20)   # ts + tt + data + mac
                                                              
 def _decode (token):                                         
     """inverse of encode: return _TokenData"""               
     try:                                                     
-        bytes = urlsafe_b64decode (token)   # ts + tt + [uid +] data + mac
+        bytes = urlsafe_b64decode (token)   # ts + tt + data + mac
     except TypeError:
-        logging.exception('Base64: ')
+        logging.warning('Base64 Error: token = %r', token)
+        logging.exception('Base64 Error: ')
         raise Base64Error
     
-    ts, tt, uid = W._iBq.unpack_from (bytes)     # uid is arbitrary unless tt == 0 (1st 8 bytes of the MAC(20 bytes)).
+    ts, tt = W._iB.unpack_from (bytes) 
     ttype = _tokenType (tt)
-    logging.debug ('decode tokentype = %r tt = %r',ttype, tt)
-    if ttype == 'auth': 
-        preDataLen = TS+CH+UID
-    else:  
-        preDataLen = TS+CH
-        uid = None      # if ttype =! 'auth' then there was no uid, so delete arbitrary uid value
+    logging.debug ('decode tokentype = %r tt = %r token = %s',ttype, tt, token)
+    preDataLen = TS+CH
     data = bytes[ :-MAC]
-    mac1 = bytes [-MAC: ] 
+    mac1 = bytes[-MAC: ] 
     mac2 = _hash (data, ts)
-    bMac = utils.sameStr (mac1, mac2)
+    badMac = not u.sameStr (mac1, mac2)
     data = _deserialize (data [preDataLen: ])
     # logging.debug('data: %r', data)
-    return _TokenData (token, ttype, data, bMac, ts)
+    return _TokenData (token, ttype, data, badMac, ts)
     

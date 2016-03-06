@@ -3,7 +3,9 @@ queue:
 - name: mailSender
   rate: 1/m             # TODO: Change to 1/s
   bucket_size: 1
+  max_concurrent_requests: 1
   
-- name: badLogin
-  rate: 1/m             # TODO: Change to 1/s
-  bucket_size: 1  
+- name: pullq
+  mode: pull
+  retry_parameters:
+    task_retry_limit: 7 # the system will delete the task after it has been leased this number of times

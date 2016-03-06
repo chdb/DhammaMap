@@ -5,7 +5,7 @@ from google.appengine.api import urlfetch
 from google.appengine.api import memcache
 from webapp2_extras import i18n as i
 from babel import Locale
-from utils import utf8
+import utils as u
 
 SixMonths = 26*7*24*60*60 # 26 weeks in seconds
 
@@ -113,8 +113,11 @@ def get_locale_from_accept_header(request, localeTags):
     if parsed is None:
         return None
     pairs_sorted_by_q = sorted(parsed.items(), key=lambda (lang, q): q, reverse=True)
-    locale = Locale.negotiate([lang for (lang, q) in pairs_sorted_by_q], request.app.config.get('locales'), sep='_')
-    return utf8(locale)
+    locale = Locale.negotiate( [lang for (lang, q) in pairs_sorted_by_q]
+                             , u.config('locales')
+                             , sep='_'
+                             )
+    return u.utf8(locale)
 
 def set_locale(rh, tag=None):
     """ Retrieve the locale and set it for the app.
@@ -135,7 +138,7 @@ def set_locale(rh, tag=None):
         """ Retrieve the locale tag from a prioritized list of sources
         NB We cannot return None because there has to be a locale - clearly UI text has to be in some language or other.
         """
-        localeTags = rh.app.config.get('locales')
+        localeTags = u.config('locales')
         if localeTags: 
             # 1. use tag param
             if tag in localeTags:
@@ -215,7 +218,7 @@ def getLocaleStrings (handler):
     ctag = set_locale (handler)  # current locale as a string in form: 'aa' or 'aa_AA'  eg: 'en' or 'fr_CA'
     ls = memcache.get (ctag)     # requests from a user will generally have same locale so it makes sense to hold this in memcache @UndefinedVariable
     if ls is None:               # ... and even more so because also many different users will use same locale (memcache is global to the app)
-        locale_tags = handler.app.config.get ('locales')
+        locale_tags = u.config ('locales')
         ls = LocaleStrings (ctag, locale_tags)
         memcache.add (ctag, ls)  # @UndefinedVariable
     return ls

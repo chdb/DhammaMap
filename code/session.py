@@ -4,7 +4,7 @@
 
 import logging
 import cryptoken
-import utils
+import utils as u
 from models import User
 
 def loadConfig(app):
@@ -28,15 +28,15 @@ def loadConfig(app):
                            #, required_keys =('secret_key',)
                            )
 
-def cfg(handler):
-    return handler.app.config [__name__]
+# def cfg(handler):
+    # return handler.app.config [__name__]
     
 # # # # # # # # # # # # # # # # # # # # 
 
 class CookieMgr (object):
     def __init__(_s, handler):
         _s.handler = handler
-        _s.cfg = cfg(handler)
+        _s.cfg = u.config(__name__)
         _s.name = _s.cfg['cookieName']    
 
     def set (_s, val):
@@ -81,8 +81,7 @@ class _UpdateDictMixin (object):
     del calls_update
 
 class SessionVw (_UpdateDictMixin, dict):
-    """ Owing to statelessness of http, there cannot be a real Session object. Instead we have a
-    SessionVw which looks like a session but its really just a view- a snapshot of a session. It has same 
+    """ SessionVw looks like a session but its really just a view- a snapshot of a session. It has same 
     data but lasts only for a request lifetime, retrieving the session data from the session cookie.
     """
     __slots__ = ('modified') # 'container', 'new', is not used
@@ -91,24 +90,28 @@ class SessionVw (_UpdateDictMixin, dict):
     def __init__ (_s, handler):  # container, , new=False
         # import webapp2
         # assert isinstance(handler, webapp2.RequestHandler)
-        
+        logging.debug('####################SessionVw __init__ called')           
         _s.modified = False
+        _s.expired  = False
         _s.cookie = CookieMgr(handler)
-        obj = None
+        data = None
         val = _s.cookie.get()
         if val:
-            obj = cryptoken.decodeToken (val, _s.cookie.cfg, 'session')
+            data, _s.expired = cryptoken.decodeToken (val, 'session')
+            #todo: we need to distinguish expired tokens from corrupted ones
+            #      if its corrupted issue a 404 
+            #      if its expired log-out and issue a explanatory message             
             #logging.debug ('session data = %r', obj)
-            if obj is None:
-                logging.warning ('deleting invalid cookie = %r', val)
-                _s.cookie.delete ()
-            else:
+            # if data is None:
+                # logging.warning ('deleting invalid cookie = %r', val)
+                # _s.cookie.delete ()
+            # else:
                 #assert len(obj) == 2  
                 # ssn = SessionVw (obj[0])
                 # user = SessionVw (obj[1]) if obj[1] else None
-                assert type(obj) is dict            
+        assert not data or type(data) is dict            
         #else: logging.info('No cookie found')           
-        dict.update (_s, obj or ())
+        dict.update (_s, data or ())
 
     def save (_s):
         #   memcache.set(ssn['_userID'] + 'x', ok) 
@@ -167,24 +170,35 @@ class SessionVw (_UpdateDictMixin, dict):
         _s.setdefault ('_flash', []).append((msg, level))  # append to duple list:  [(msg, level), ...]
 
     def logIn (_s, user, ip):
-        _s['_userID'] = user.id()
-        _s['_logInTS']= utils.sNow()
-        _s['_sessIP'] = ip
+        logging.debug('1 uid = %r', user.id())
+        _s['_userID' ]= user.id()
+        _s['_logInTS']= u.sNow()
+        _s['_sessIP' ]= ip
        # _s['_sessID'] = sid = utils.newSessionToken()
        # user.token = sid
        # user.modified = True
+        logging.debug('just logged in ssn = %r',_s)
+        logging.debug('just logged in ssn id = %r',id(_s))
         
-    def logOut (_s, user):
-        if user:
-            user.token = ''
-            user.modified = True
-        _s.pop('_userID' , None)
-        _s.pop('_logInTS', None)
-        _s.pop('_sessIP' , None)
-       # _s.pop('_sessID' , None)
+    def logOut (_s):
+        # if user:
+            # user.token = ''
+            # user.modified = True
+        # _s.pop('_userID' , None) # default arg (None) to avoid KeyError
+        # _s.pop('_logInTS', None)
+        # _s.pop('_sessIP' , None)     
+        logging.debug('about to logout ssn = %r',_s)
+        logging.debug('about to logout  ssn id = %r',id(_s))
+        uid = _s.pop('_userID', None)# default arg (None) to avoid KeyError
+        logging.debug('2 uid was = %r', uid)
+        if uid:
+            del _s['_logInTS']
+            del _s['_sessIP' ]            
+            return True
+        return False
 
     def isLoggedIn (_s, user, ip):  
-        if ( '_logInTS'in _s # \        # and '_sessID' in _s \
+        if ('_logInTS'in _s   # \   # and '_sessID' in _s \
         and '_sessIP' in _s): 
             if user:
               #  if user.sameToken(_s['_sessID']):
@@ -194,7 +208,7 @@ class SessionVw (_UpdateDictMixin, dict):
 
     def hasLoggedInRecently (_s, maxAge):
         timeStamp = _s['_logInTS']
-        return utils.validTimeStamp (timeStamp, maxAge)
+        return u.validTimeStamp (timeStamp, maxAge)
      
     
     #   3) encode(new) to save IP address when new==True to memcache and 

@@ -40,57 +40,81 @@ from collections import namedtuple
                                   # ,'latency'   # deciSeconds - maximum time for network plus browser response
                                   # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
                                                 #Todo: set latency value at runtime from multiple of eg a redirect
-
 RateLimitCfg = namedtuple('RateLimitCfg',['minDelay'      #
-                                         ,'locks'    # 
+                                         ,'lockCfg'    # 
                                          ])
-LockCfg      = namedtuple('LockCfg'    , ['name'      # string - the monitor id
-                                         ,'delayFn'   # lambda
+LockCfg      = namedtuple('LockCfg'    , ['delayFn'   # lambda
                                          ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
                                          ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
-                                         ,'locktime'  # seconds - duration of lockout
+                                         ,'duration'  # seconds - duration of lockout
                                          ,'bGoodReset'# boolean - whether reset occurs for good login
                                          ])
-                          # seconds
-cfg={ 'maxAgeRecentLogin' : 60*10  
-    , 'maxAgeSignUpTok'   : 60*60*24
-    , 'maxAgePasswordTok' : 60*60  
-    , 'maxAgePassword2Tok': 60*60  
+cfg={'DebugMode'         : True    #if True, uncaught exceptions are raised instead of using HTTPInternalServerError.
+                                   # so that you get a stack trace in the log
+                                   #otherwise its just a '500 Internal Server Error' 
+    ,'locales' : []
+                         # seconds- 0 means never expire
+   #  'maxAgeRecentLogin' : 60*10  
+    ,'maxAgeSignUpTok'   : 60*60*24
+    ,'maxAgePasswordTok' : 60*60  
+    ,'maxAgePassword2Tok': 60*60  
+    #,'maxIdleAnon'       : 0 #60*60  
+    ,'maxIdleAuth'       : 15 #60*60  
+
+    ,'Login':RateLimitCfg ( 5     # deciSeconds - minimum time between requests.
+                            # delay or lock on repeated requests from the same ipa and the same ema
+                          , {'ema_ipa':LockCfg( lambda n: n**2 # *10 # 1 2 4 8 16...
+                                              , 3      #maxbad
+                                              , 60*1   #period
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                                              ) 
+                            # delay orlock onrepeated requests from the same ema but different ipa's
+                            ,'ema'    :LockCfg( lambda n: (n-1)*3 # 0 3 6 9 12...
+                                              , 3      #maxbad
+                                              , 60*1   #period
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                                              )
+                            # delay orlock onrepeated requests from the same ipa but different ema's
+                            ,'ipa'    :LockCfg( lambda n: (n-1)*5 # 0 5 10 15 20 ...
+                                              , 3      #maxbad
+                                              , 60*1   #period 
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                          ) }                 )              
+    ,'Forgot':RateLimitCfg( 5    # deciSeconds- minimum time between requests.
+                          , {'ema_ipa':LockCfg( lambda n: n**2 # *10 # 1 2 4 8 16...
+                                              , 3      #maxbad
+                                              , 60*1   #period
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                                              ) 
+                            ,'ema'    :LockCfg( lambda n: (n-1)*3 # 0 3 6 9 12...
+                                              , 3      #maxbad
+                                              , 60*1   #period
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                                              )
+                            ,'ipa'    :LockCfg( lambda n: (n-1)*5 # 0 5 10 15 20 ...
+                                              , 3      #maxbad
+                                              , 60*1   #period 
+                                              , 60*3   #duration
+                                              , True   #bGoodReset
+                          ) }                 )              
+    ,'pepper'             : None          
+    ,'recordEmails'       : True
+    ,'email_developers'   : True
+    ,'developers'         : (('Santa Klauss', 'snowypal@northpole.com'))
     
-    , 'loginRateLimit': RateLimitCfg ( 5     # deciSeconds - minimum time between requests.
-                                     , { 'ei': LockCfg ('email & ip'      #name
-                                                       , lambda n: n**2 # *10 # 1 2 4 8 16...
-                                                       , 3      #maxbad
-                                                       , 60*1   #period
-                                                       , 60*3   #locktime
-                                                       , True   #bGoodReset
-                                                       ) 
-                                       , 'em': LockCfg ('email'      #name
-                                                       , lambda n: (n-1)*3 # 0 3 6 9 12...
-                                                       , 3      #maxbad
-                                                       , 60*1   #period
-                                                       , 60*3   #locktime
-                                                       , True   #bGoodReset
-                                                       )
-                                       , 'ip': LockCfg ('ip'      #name
-                                                       , lambda n: (n-1)*5 # 0 5 10 15 20 ...
-                                                       , 3      #maxbad
-                                                       , 60*1   #period
-                                                       , 60*3   #locktime
-                                                       , True   #bGoodReset
-                                     ) }               )              
-    , 'pepper'             : None          
-    , 'log_email'          : True
-    , 'email_developers'   : True
-    , 'developers'         : (('Santa Klauss', 'snowypal@northpole.com'))
-    
-    # add-to/update the default_config at  \webapp2_extras\jinja2.py
-    , 'webapp2_extras.jinja2':  { 'template_path'   : [ 'template' ]
-                                , 'environment_args': { 'extensions': ['jinja2.ext.i18n'
-                                                                      ,'jinja2.ext.autoescape'
-                                                                      ,'jinja2.ext.with_'
-                                                                      ]
-                                                     # , 'autoescape': set_autoescape
-                                                      }
-                                }
+    #add-to/update the default_config at  \webapp2_extras\jinja2.py
+    ,'webapp2_extras.jinja2':  { 'template_path'   : [ 'template' ]
+                               , 'environment_args': { 'extensions': ['jinja2.ext.i18n'
+                                                                     ,'jinja2.ext.autoescape'
+                                                                     ,'jinja2.ext.with_'
+                                                                     ]
+                                                    # , 'autoescape': set_autoescape
+                                                     }
+                               }
     }
+cfg['Signup'] = cfg['Forgot']

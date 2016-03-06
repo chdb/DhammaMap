@@ -6,15 +6,19 @@ selector {	cursor: url(myimage.jpg), auto;
 {% endblock %}
 
 {% block maincontent %}
+<div id="formdiv">
 	<h1>Recover Password</h1>
 	<p>Forgot your password? Click the link below to receive a link to reset your password.</p>
-
-	<form class="form" action= "/forgot" method="POST">
-		{{ m.input_csrf() }}
-		<label for="email">email address</label>
-		<input type="text" name="email" >
+	<form class="form" action= "/forgot/a" method="POST">
+		{{ mcr.input_csrf() }}
+		{{ mcr.input_email(email) }}
 		<br>
 		<!-- additional inputs for security questions like mothers maiden name -->
 		<input type="submit" value="Send password reset link">
 	</form>
+</div>
+{% endblock %}
+
+{% block mediaJS %}
+<script src="../static/dhammamap.js"></script>
 {% endblock %}

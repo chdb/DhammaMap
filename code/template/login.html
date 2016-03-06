@@ -23,33 +23,29 @@
 */
 
 
-
 {% endblock %}
 
 {% block maincontent %}
+<!--todo: support HTML5 features (red in np++) in older browsers eg IE9 with a polyfill eg webshim for -->
 <div id="formdiv">
 	<h1>Login</h1>
 	<form action="/login" method="POST">
-		{{ m.input_csrf() }}
-		<label>email address
-			<input type="email" value="{{ email }}" name="email"  required minlength="5" pattern=".{5,}"
-			title = "minimum of 5 characters!">
-		</label>
+		{{ mcr.input_csrf() }}
+		{{ mcr.input_email() }}
 		<br>
-		<label>Password
-			<input type="password" maxlength="6"  name="password" required minlength="3" pattern=".{3,6}"	
-			title = "between 3 and 6 characters!">
-		</label>
-		<a href="/forgot">Forgot password</a>
+        <div>    
+            {{ mcr.input_password() }}
+            <button class='i defaultAction' type="submit" class= formaction="/login" />
+            <button class=i type="submit" id="forgot" formaction="/forgot" formnovalidate>Forgot</button>
+		</div>
+		<!--a id="forgot" href="/forgot">Forgot password</a-->
 		<br>
 		<br>
-		<button type="submit" class="btn" id ='btn1'>Login</button>
+		<button type="submit">Login</button>
 	</form>
 </div>
 {% endblock %}
 
 {% block mediaJS %}
-{% endblock %}    
-
-
-
+<script src="../static/dhammamap.js"></script>
+{% endblock %}

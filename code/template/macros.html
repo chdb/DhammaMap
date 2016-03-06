@@ -2,3 +2,16 @@
 {% macro input_csrf() %}	
 	<input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 {% endmacro %}
+
+{% macro input_email(ema) -%}	
+	<label>email address
+		<input required minlength="5" type="email" value="{{ ema }}" name="ema" pattern=".{5,}"
+		title = "minimum of 5 characters!">
+	</label>
+{%- endmacro %}
+
+{% macro input_password() %}
+    <label for='pwd'>password</label>
+    <input id= 'pwd' class=i type="password" maxlength="6" name="password" required pattern=".{3,6}"	
+    title = "between 3 and 6 characters!">
+{% endmacro %}
