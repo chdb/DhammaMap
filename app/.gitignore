@@ -1,0 +1,17 @@
+/node_modules
+/dist
+/.tmp
+/.sass-cache
+/bower_components
+test
+*.py[cod]
+.project
+.pydevproject
+*.bak
+*.egg
+*.egg-info
+*.dist-info
+old
+test.py
+
+
