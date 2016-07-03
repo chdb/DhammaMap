@@ -90,7 +90,7 @@ class SessionVw (_UpdateDictMixin, dict):
     def __init__ (_s, handler):  # container, , new=False
         # import webapp2
         # assert isinstance(handler, webapp2.RequestHandler)
-        logging.debug('####################SessionVw __init__ called')           
+        #logging.debug('####################SessionVw __init__ called')           
         _s.modified = False
         _s.expired  = False
         _s.cookie = CookieMgr(handler)

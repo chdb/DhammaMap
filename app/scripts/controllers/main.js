@@ -3,12 +3,12 @@
 
 /**
  * @ngdoc function
- * @name dhammamapClientApp.controller:MainCtrl
+ * @name dhammamapApp.controller:MainCtrl
  * @description
  * # MainCtrl
- * Controller of the dhammamapClientApp
+ * Controller of the dhammamapApp
  */
-angular.module	('dhammamapClientApp')
+angular.module	('dhammamapApp')
 	.controller ( 'MainCtrl'
 					, ['$scope'
 					  ,'localStorageService'
@@ -28,5 +28,17 @@ angular.module	('dhammamapClientApp')
 		s.removeTodo = function (index) {
 			s.todos.splice(index, 1);
 		};
-	}]);
+	}])
+	
+/*	.controller('NavCtrl', function ($scope, $location) 
+	{ 	// BS-NavBar does not set the selected tab's bg colour because BS does not set it to active, we have to do that ourselves.
+		$scope.isActive = function (viewLocation) { 
+			return viewLocation === $location.path();
+		};
+		// .. alternatively if using UI Router, then no controller needed instead just use the ui-sref-active/ui-sref-active-eq directives, 
+		//ie. ui-sref-active-eq='active' or ui-sref-active='active' to achieve the same result.
+		
+		// NB there is another issue - the border of active tab is not shown in Chrome, although shown dotted in Firefox
+	})
+*/	;
 

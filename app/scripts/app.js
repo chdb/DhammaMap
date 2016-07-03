@@ -1,22 +1,23 @@
 (function (){ 'use strict';
 /**
  * @ngdoc overview
- * @name dhammamapClientApp
+ * @name dhammamapApp
  * @description
- * # dhammamapClientApp
+ * # dhammamapApp
  *
  * Main module of the application.
  */
 angular
-	.module('dhammamapClientApp'
+	.module('dhammamapApp'
 			 , ['ngAnimate'
 				,'ngAria'
 				,'ngCookies'
 				,'ngMessages'
 				,'ngResource'
-				,'ngRoute'
+				//,'ngRoute'
 				,'ngSanitize'
-				,'ngTouch'
+				,'ngTouch'					 
+				,'ui.router'
 				,'ui.sortable'
 				,'LocalStorageModule'
 	])
@@ -24,26 +25,52 @@ angular
 			  , function (lssp){
 					lssp.setPrefix('ls');
 	}])
-	.config(['$routeProvider'
-			  , function (rp)
-			  { rp.when('/'
-						  ,{ templateUrl : 'views/main.html'
-							, controller  : 'MainCtrl'
-							, controllerAs: 'main'
-						  })
-					.when('/about'
-						  ,{ templateUrl : 'views/about.html'
-							, controller  : 'AboutCtrl'
-							, controllerAs: 'about'
-						  })
-					.when('/login'
-						  ,{ templateUrl : 'views/login.html'
-							, controller  : 'LoginCtrl'
-							, controllerAs: 'login'
-						  })
-					.otherwise
-						  ({ redirectTo: '/' });
-	}]);
+	// .config(['$routeProvider'
+			  // , function (rp)
+			  // { rp.when('/'
+						  // ,{ templateUrl : 'views/main.html'
+							// , controller  : 'MainCtrl'
+							// , controllerAs: 'main'
+						  // })
+					// .when('/about'
+						  // ,{ templateUrl : 'views/about.html'
+							// , controller  : 'AboutCtrl'
+							// , controllerAs: 'about'
+						  // })
+					// .when('/login'
+						  // ,{ templateUrl : 'views/login.html'
+							// , controller  : 'LoginCtrl'
+							// , controllerAs: 'login'
+						  // })
+					// .otherwise
+						  // ({ redirectTo: '/' });
+	// }]);
+// .config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) //
+	.config(['$stateProvider', function ($stateProvider) 
+    { $stateProvider
+			.state ('home' , { url:'/'
+								  , templateUrl: 'views/main.html'
+								  , controller: 'MainCtrl'
+								  , controllerAs: 'main'
+								  })
+			.state ('about', { url:'/about'
+								  , templateUrl: 'views/about.html'
+								  , controller: 'AboutCtrl'
+								  , controllerAs: 'about'
+								  })
+			.state ('login', { url:'/login'
+								  , templateUrl: 'views/login.html'
+								  , controller: 'LoginCtrl'
+								  , controllerAs: 'login'
+								  })
+			.state ('contact', { url:'/contact'
+								//  , templateUrl: 'views/contact.html'
+								//  , controller: 'contactCtrl'
+								//  , controllerAs: 'contact'
+								  })
+					  ;
+	 }]);
+
 				 
 /*run.$inject = ['$rootScope', '$location', '$cookieStore', '$http'];
 function run($rootScope, $location, $cookieStore, $http) {

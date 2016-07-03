@@ -20,6 +20,7 @@ import utils as u
 import models as m
 from jinja_boot import Jinja
 import json
+import math
 #from widget import W
 #import utils
 #import httplib as http
@@ -96,12 +97,13 @@ def rateLimit (fn):
                     logging.warning('%s BruteForceAttack! on %s page: start lock on %s: ema:%s pwd:%s ipa:%s',mode, hlr, name, ema, pwd, ipa)
                 elif next: 
                     params['nextUrl'] = next
-        elif rlt.state =='429':
-            pwd = h.request.get('password')
-            logging.warning('BruteForceAttack? throttle failure 429 for ema:%s ipa:%s %s pwd:%s', ema, ipa, pwd)
-            h.flash('http code: 429 Too Many Requests')
-        elif rlt.state =='wait':
-            params['delay'] = rlt.delay*100   # 100 converts ds to ms
+        # elif rlt.state =='429':
+            # pwd = h.request.get('password')
+            # logging.warning('BruteForceAttack? throttle failure 429 for ema:%s ipa:%s %s pwd:%s', ema, ipa, pwd)
+            # h.flash('http code: 429 Too Many Requests')
+        # elif rlt.state =='wait':
+        else:
+            params['delay'] = rlt.wait
         h.ajaxResponse (**params) 
         #todo: instead of auto unlock after n=locktime seconds, after n send user and email with unlock link 
 
@@ -124,25 +126,29 @@ class RateLimiter (object):
                 if nBad:
                     #logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
                     _s.delay += cf.delayFn(nBad)
-            #logging.debug('delay = %d ms',_s.delay * 100)
+            d = _s.delay*100.0              # convert from int-deciseconds to float-milliseconds 
+            # Now divide d into a series of equal waits so each wait is the max that is less than MemCacheKeepAlive
+            _s.wait = int(d/math.ceil(d/u.config('MemCacheKeepAlive'))) # .. and convert to int-millisecs
+            logging.debug('delay = %d ms, wait = %d ms',_s.delay * 100, _s.wait)
         
         def _initMonitors (ema, ipa, hlr):
         
             def _insert (name, key, diff):
                 assert name in lCfg
+                #diff is the distinct value 
                 _s.monitors[name] = ('L:'+hlr+':'+key, diff, lCfg[name])
 
             cfg = u.config(hlr)
             lCfg = cfg.lockCfg
             _s.monitors = {}
-                    #name     ,key  ,diff
+                    # name    ,key  ,diff
             _insert ('ema_ipa',_s.ei,None)
             _insert ('ema'    ,ema  ,ipa )
             _insert ('ipa'    ,ipa  ,ema )       
             #logging.debug('monitors = %r',_s.monitors)
             return cfg
         
-        _s.state = None
+        #_s.state = None
         _s.ei = ema + ipa
         _s.mc = memcache.Client()        
         cfg = _initMonitors (ema, ipa, hlr)
@@ -164,15 +170,15 @@ class RateLimiter (object):
         now = u.dsNow() # deciseconds
         key = 'W:'+ _s.ei
         expiry = _s.mc.get (key)
-        #logging.debug('expiry = %r',expiry)
+        logging.debug('expiry = %r  key = %s',expiry, key)
         if expiry:
-            _s.mc.delete (key)
             if expiry <= now:
-                _s.state = 'good' 
+                _s.mc.delete (key)
+                #_s.state = 'good' 
                 return True #handler state 'good':-> | 'bad' | 'locked'
-            _s.state = '429'
+            #_s.state = '429'
         else: # key not found 
-            _s.state = 'wait' 
+            #_s.state = 'wait' 
             exp = _s.delay+rtt # exp = relative expiry = delay+maxLatency. For maxLatency(ds), rtt * 100 (say) gives a v rough upper limit 
             _s.mc.set (key, now+_s.delay, exp)  # ... but because rtt / 100 to convert ms to ds, maxLatency(ds) = rtt(ms) [!] - IE do nothing!
         return False                                   
@@ -197,7 +203,7 @@ class RateLimiter (object):
                         if diff:
                             assert diff not in dset
                             dset.append(diff)
-                            _s.mc.set (key, val, exp) # set() needs explicit abs exp to keep to same exp time
+                            _s.mc.set (key, (dset,exp), exp) # set() needs explicit abs exp to keep to same exp time
                             logging.debug('diffset: %r', dset)
                         else: _s.mc.incr (key)        # incr() implicitly keeps same exp time
                     else: 
@@ -214,7 +220,7 @@ class RateLimiter (object):
                 _s.mc.set (key, val, exp)
             return found, lock
         
-        assert _s.state == 'good', 'Must call ready() before calling try_()'
+        #assert _s.state == 'good', 'Must call ready() before calling try_()'
         found, lock = update('ema_ipa')
         if not found:
             found, lock = update('ema')
@@ -419,11 +425,17 @@ class H_Base (wa2.RequestHandler):
         '''use this for ajax responses'''
         ka['msgs'] = _s.get_fmessages()
         resp = json.dumps (ka)
+        
+        # Note: old browsers may have JSON Vulnerability if the JSON string is an array [...] at top level.
+        # But we are safe since ka is a python 'dictionary' so json.dumps() converts it to a JSON 'object' {...}. 
+        assert resp.lstrip()[0] == '{', 'JSON Vulnerability'
+        assert resp.rstrip()[-1]== '}', 'JSON Vulnerability'
+        
         _s.response.write (resp)
 
     # def sendNewVerifyToken (_s, tokData, route):
         # tokenStr = cryptoken.encodeVerifyToken (tokData, tt)
-        ##logging.info('token = %s', tokenStr)
+        # #logging.info('token = %s', tokenStr)
         # if   tt == 'signUp': route = 'signup_2'
         # elif tt == 'pw1': route = 'newpassword'
         # else: assert False
@@ -433,8 +445,8 @@ class H_Base (wa2.RequestHandler):
                                 # , _full=True
                                 # )
         # logging.info('sent  url = %s', verify_url)
-        
-        ##todo replace with 'an email has been sent' + code sending email
+                            
+        # #todo replace with 'an email has been sent' + code sending email
         # _s.sendEmail(to=)
         # _s.flash ('An email has been sent to you. Please follow the instructions.'
                   
@@ -445,6 +457,7 @@ class H_Base (wa2.RequestHandler):
         #_s.redirect_to('home')
         # replace with redirect
         #_s.serve ('message.html', {'message': msg})
+        
     def verifyMsg (_s, msg, route, ema=None, nonce=None, tt=None): #todo use same string for tt as for route and simplifycode!
         assert bool(nonce) == bool(tt),'theres a nonce iff theres a tt'
         assert bool(nonce) == bool(ema),'theres a nonce iff theres a ema'

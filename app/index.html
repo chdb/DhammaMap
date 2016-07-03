@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="styles/main.css">
     <!-- endbuild -->
   </head>
-  <body ng-app="dhammamapClientApp">
+  <body ng-app="dhammamapApp" >
     <!--[if lte IE 8]>
       <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
     <![endif]-->
@@ -25,31 +25,35 @@
         <div class="container">
           <div class="navbar-header">
 
-            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#js-navbar-collapse">
+            <button type="button" class="navbar-toggle active collapsed" data-toggle="collapse" data-target="#js-navbar-collapse">
               <span class="sr-only">Toggle navigation</span>
-              <span class="icon-bar"></span>
+              <span class="icon-bar"></span> <!-- tri-bar -->
               <span class="icon-bar"></span>
               <span class="icon-bar"></span>
             </button>
 
-            <a class="navbar-brand" href="#/">dhammamap Client</a>
+            <a class="navbar-brand" href="#/">dhammamap</a>
           </div>
 
-          <div class="collapse navbar-collapse" id="js-navbar-collapse">
-
+          <div class="collapse navbar-collapse" id="js-navbar-collapse"><!-- ng-controller="NavCtrl" --> 
             <ul class="nav navbar-nav">
-              <li class="active"><a href="#/">Home</a></li>
-              <li><a ng-href="#/about">About</a></li>
-              <li><a ng-href="#/login">Login</a></li>
-              <li><a ng-href="#/">Contact</a></li>
-            </ul>
+              <!-- <li 				 ng-class="{active:isActive('/'				)}"><a href		="#/"				>Home
+              </a></li><li ng-class="{active:isActive('/about'	)}"><a ng-href="#/about"	>About
+              </a></li><li ng-class="{active:isActive('/login'	)}"><a ng-href="#/login"	>Login
+              </a></li><li ng-class="{active:isActive('/contact')}"><a ng-href="#/contact">Contact
+             -->  
+							<li 				 ui-sref-active="active"><a ui-sref="home"	>Home
+              </a></li><li ui-sref-active="active"><a ui-sref="about"	>About
+              </a></li><li ui-sref-active="active"><a ui-sref="login"	>Login
+              </a></li><li ui-sref-active="active"><a ui-sref="contact">Contact
+            </a></li></ul>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="container">
-        <div ng-view=""></div>
+    <div class="container"  ><!-- ng-controller="rtCtrl" -->
+        <div ui-view=""></div>
     </div>
 
     <!--div class="jumbotron">
@@ -74,7 +78,7 @@
     </div>
 
     <!-- Google Analytics: change UA-XXXXX-X to be your site's ID -->
-     <script>
+    <script>
        !function(A,n,g,u,l,a,r){A.GoogleAnalyticsObject=l,A[l]=A[l]||function(){
        (A[l].q=A[l].q||[]).push(arguments)},A[l].l=+new Date,a=n.createElement(g),
        r=n.getElementsByTagName(g)[0],a.src=u,r.parentNode.insertBefore(a,r)
@@ -83,7 +87,6 @@
        ga('create', 'UA-XXXXX-X');
        ga('send', 'pageview');
     </script>
-
     <!-- build:js(.) scripts/vendor.js -->
     <!-- bower:js -->
     <script src="bower_components/jquery/dist/jquery.js"></script>
@@ -100,13 +103,15 @@
     <script src="bower_components/jquery-ui/jquery-ui.js"></script>
     <script src="bower_components/angular-ui-sortable/sortable.js"></script>
     <script src="bower_components/angular-local-storage/dist/angular-local-storage.js"></script>
+    <script src="bower_components/angular-ui-router/release/angular-ui-router.js"></script>
     <!-- endbower -->
     <!-- endbuild -->
-
     <!-- build:js({.tmp,app}) scripts/scripts.js -->
-    <script src="scripts/app.js"></script>
-    <script src="scripts/controllers/main.js"></script>
-    <script src="scripts/controllers/about.js"></script>
+     				 <script src="scripts/app.js">
+    </script><script src="scripts/controllers/main.js">
+    </script><script src="scripts/controllers/about.js">
+    </script><script src="scripts/controllers/login.js">
+		</script>
     <!-- endbuild -->
 </body>
 </html>

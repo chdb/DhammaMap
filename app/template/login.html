@@ -30,14 +30,14 @@
 <div id="formdiv">
 	<h1>Login</h1>
 	<form action="/login" method="POST">
-		{{ mcr.input_csrf() }}
+		{{ mcr.input_csrf()  }}
 		{{ mcr.input_email() }}
 		<br>
-        <div>    
-            {{ mcr.input_password() }}
-            <button class='i defaultAction' type="submit" class= formaction="/login" />
-            <button class=i type="submit" id="forgot" formaction="/forgot" formnovalidate>Forgot</button>
-		</div>
+      <div>    
+				{{ mcr.input_password() }}
+				<button class='i defaultAction' type="submit" formaction="/login" />
+				<button class=i type="submit" id="forgot" formaction="/forgot" formnovalidate>Forgot</button>
+			</div>
 		<!--a id="forgot" href="/forgot">Forgot password</a-->
 		<br>
 		<br>

@@ -2,12 +2,14 @@
 
 /**
  * @ngdoc function
- * @name dhammamapClientApp.controller:AboutCtrl
+ * @name dhammamapApp.controller:AboutCtrl
  * @description
  * # AboutCtrl
- * Controller of the dhammamapClientApp
+ * Controller of the dhammamapApp
  */
-angular.module('dhammamapClientApp')
+
+ 
+angular.module('dhammamapApp')
   .controller('LoginCtrl', function () {
     this.awesomeThings = [
       'HTML5 Boilerplate',

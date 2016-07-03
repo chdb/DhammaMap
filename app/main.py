@@ -2,6 +2,16 @@
 # -*- coding: utf-8 -*-
 #from __future__ import unicode_literals
 
+# ###############################
+# Code Conventions
+# ----------------
+# U = uppercase
+# c = lowercase
+# U or UU for module alias
+# c       for local variables 
+# _s : self
+# ###############################
+
 import logging
 import webapp2 as wa2
 import os

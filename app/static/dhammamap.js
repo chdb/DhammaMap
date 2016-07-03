@@ -17,37 +17,39 @@
 	var forgot	= false;
 	var $flashes = $('#flashes');
 	var $formdiv = $('#formdiv');		// put "formdiv" as the id on the div that will be blocked, and which contains the form
-	var	$forgot  = $('#forgot');
+	var $forgot  = $('#forgot');
 	
 	function initFlashes ()
-	{	$flashes.hide()
-				.height('auto')
-				.css( { fontSize:'25%'
-					  , padding: 0 } );
+	{	$flashes
+			.hide()
+			.height('auto')
+			.css({ fontSize:'25%'
+				  , padding: 0 } );
 		logTS('up done'); 
 	}		
 	function beforeFn () 
 	{ 	if ($flashes.children().length) 
 		{	logTS('start up');
-			$flashes.stop()
-					.animate( { height : 0
-							  , fontSize : '50%'
-							  , paddingLeft: 0
-							  , paddingRight: 0
-							  , paddingTop: 0
-							  , paddingBottom: 0
+			$flashes
+				.stop()
+				.animate ( { height 			: 0
+							  , fontSize 		: '50%'
+							  , paddingLeft	: 0
+							  , paddingRight	: 0
+							  , paddingTop		: 0
+							  , paddingBottom	: 0
 							  }
 							, 200
 							, initFlashes
 							);
 		}
 		if (! blocked) 
-		{	$formdiv.block(	{ message: '<i class="fa fa-circle-o-notch fa-spin fa-3x"></i>'
-							, css	 : 	{ width  : 'inherit'		
-										, border : '4px solid darkgreen'
-										, borderRadius: '45%'
-										} 			 
-							} );
+		{	$formdiv.block	(	{ message: '<i class="fa fa-circle-o-notch fa-spin fa-3x"></i>'
+									, css	 	: 	{ width  : 'inherit'		
+													, border : '4px solid darkgreen'
+													, borderRadius: '45%'
+													} 			 
+								}	);
 			blocked = true;
 		}
 	}
@@ -58,15 +60,16 @@
 	function showMsgs (msgs)
 	{ 	if (msgs.length)
 		{ 	$flashes.html (msgs);
-			$flashes.stop()
-					.show()
-					.animate( { height : 20
-							 // , padding: '20px 20px 120px 40px'
-							  , fontSize : '1em'
-							  , paddingLeft  : 50
-							  , paddingRight : 20
-							  , paddingTop	 : 15
-							  , paddingBottom: 15
+			$flashes
+				.stop()
+				.show()
+				.animate	( { height 			: 20
+						 // , padding: '20px 20px 120px 40px'
+							  , fontSize 		:'1em'
+							  , paddingLeft  	: 50
+							  , paddingRight 	: 20
+							  , paddingTop	 	: 15
+							  , paddingBottom	: 15
 							  }
 							, 200
 							, function() {	$flashes.height('auto'); 
@@ -86,7 +89,7 @@
 	function successFn (resp)
 	{	if (resp.nextUrl)	// redirect
 			window.location = resp.nextUrl;			
-		else if (resp.delay)// try again
+		else if (resp.delay)//wait & try again
 		{	logTS('wait: ' + resp.delay);
 			setTimeout (ajaxCall, resp.delay);	
 		}else  				// stop

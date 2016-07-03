@@ -37,7 +37,7 @@ class BadData (Exception):
     
     # if m.handler != hlr:
         # return False
-    # togo = m.lockUntil - d.datetime.now()
+    # togo = m.lockUntil_ - d.datetime.now()
     # bUnexpired = togo > d.timedelta()
     # if bUnexpired:
         # logging.warning('locked for %d more seconds', togo.total_seconds())
@@ -45,7 +45,7 @@ class BadData (Exception):
 
 class Lock (ndb.Model):
 #    handler   = ndb.  StringProperty(required=True)
-    lockUntil = ndb.DateTimeProperty(required=True)
+    lockUntil_ = ndb.DateTimeProperty(required=True)
 
     @staticmethod
     def _keystr (str, hlr):
@@ -66,7 +66,7 @@ class Lock (ndb.Model):
         if e is not None:
             logging.info('Lock key already exists: %s' % keyStr)
             raise AlreadyInUse
-        e = C(lockUntil=exp)
+        e = C(lockUntil_=exp)
         e.key = k
         e.put()
         return e
@@ -74,7 +74,7 @@ class Lock (ndb.Model):
     # @classmethod
     # def create (C, duration): 
         # exp = u.dtExpiry (duration)
-        # e = C(lockUntil=exp)
+        # e = C(lockUntil_=exp)
         # e.put()
         # return e
     
@@ -88,11 +88,14 @@ class Lock (ndb.Model):
     @staticmethod
     def set (str, duration, hlr):
         '''put a lock for duration seconds on a given str and handler, hlr'''
-        #logging.debug('xxxxxxxxxxxx key = %r', str)
+        logging.debug('xxxxxxxxxxxx str = %r', str)
+        logging.debug('xxxxxxxxxxxx dur = %r', duration)
+        logging.debug('xxxxxxxxxxxx hlr = %r', hlr)
         exp = u.dtExpiry (duration)
+        logging.debug('xxxxxxxxxxxx exp = %r', exp)
         lock = Lock._find(str, hlr)
         if lock:
-            lock.lockUntil = exp
+            lock.lockUntil_ = exp
         else: 
             lock = Lock._create (str, hlr, exp)
         lock.put()
@@ -100,7 +103,7 @@ class Lock (ndb.Model):
     # def lock (_s, duration):
         # '''for a given handler, hlr, put a lock on hld for duration seconds '''
         # exp = u.dtExpiry (duration)
-        # _s.lockUntil = exp
+        # _s.lockUntil_ = exp
         # _s.put()
                 
     @staticmethod
@@ -108,7 +111,7 @@ class Lock (ndb.Model):
         '''return whether there is a current lock on a given str, and handler, hlr '''
         lock = Lock._find(str, hlr)
         if lock:
-            togo = lock.lockUntil - d.datetime.now()
+            togo = lock.lockUntil_ - d.datetime.now()
             bUnexpired = togo > d.timedelta()
             if bUnexpired:
                 logging.warning('locked for %d more seconds', togo.total_seconds())
@@ -329,7 +332,7 @@ class UserBase (ndb.Model):
     # def lock (ema, duration, hlr):
         # user = UserBase._byEmail(ema)
         # if user:
-            #user.lockUntil = u.dtExpiry (duration)
+            #user.lockUntil_ = u.dtExpiry (duration)
             # lks = user.locks
             # if lks:
                 # lks.lock(duration, hlr)
@@ -341,7 +344,7 @@ class UserBase (ndb.Model):
  #           BadEmail.lockFor (ema, duration, hlr)
 
     # def locked (_s):
-        # return _s.lockUntil > d.datetime.now()
+        # return _s.lockUntil_ > d.datetime.now()
     @staticmethod
     def byCredentials (user, praw):
         if u.badPassword (user.pwdhash, praw):      

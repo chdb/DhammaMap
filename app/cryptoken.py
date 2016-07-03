@@ -163,7 +163,7 @@ def _decode (token):
     
     ts, tt = W._iB.unpack_from (bytes) 
     ttype = _tokenType (tt)
-    logging.debug ('decode tokentype = %r tt = %r token = %s',ttype, tt, token)
+    #logging.debug ('decode tokentype = %r tt = %r token = %s',ttype, tt, token)
     preDataLen = TS+CH
     data = bytes[ :-MAC]
     mac1 = bytes[-MAC: ] 

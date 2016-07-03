@@ -36,14 +36,14 @@ eg below for
 from jinja_boot import set_autoescape
 from collections import namedtuple
 
-# DelayCfg = namedtuple('DelayCfg', ['delay'     # deciSeconds - minimum time between requests.
+# DelayCfg = namedtuple('DelayCfg', ['delay'     # 
                                   # ,'latency'   # deciSeconds - maximum time for network plus browser response
                                   # ])           # ... after this it will try again. Too small will prevent page access for slow systems. Too big will cause 
                                                 #Todo: set latency value at runtime from multiple of eg a redirect
 RateLimitCfg = namedtuple('RateLimitCfg',['minDelay'      #
                                          ,'lockCfg'    # 
                                          ])
-LockCfg      = namedtuple('LockCfg'    , ['delayFn'   # lambda
+LockCfg      = namedtuple('LockCfg'    , ['delayFn'   # lambda(n) - minimum time between requests in deciSeconds as function of the retry number.
                                          ,'maxbad'    # number consecutive 'bad' requests in 'period' ds to trigger lockout
                                          ,'period'    # seconds - time permitted for < maxbad consecutive 'bad' requests
                                          ,'duration'  # seconds - duration of lockout
@@ -60,8 +60,10 @@ cfg={'DebugMode'         : True    #if True, uncaught exceptions are raised inst
     ,'maxAgePassword2Tok': 60*60  
     #,'maxIdleAnon'       : 0 #60*60  
     ,'maxIdleAuth'       : 15 #60*60  
+    
+    ,'MemCacheKeepAlive' : 500 # milliseconds - to refresh MemCache item, so (probably) not be flushed    
 
-    ,'Login':RateLimitCfg ( 5     # deciSeconds - minimum time between requests.
+    ,'Login':RateLimitCfg ( 7     # deciSeconds - minimum time between requests.
                             # delay or lock on repeated requests from the same ipa and the same ema
                           , {'ema_ipa':LockCfg( lambda n: n**2 # *10 # 1 2 4 8 16...
                                               , 3      #maxbad

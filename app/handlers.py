@@ -178,7 +178,7 @@ class H_Login (b.H_Base):
 class H_Forgot (b.H_Base):
     
     #@b.rateLimit
-    def post (_s): # we are using post not get because we dont want to pass the ema in the query string
+    def post (_s): # "post" not "get": we dont pass the ema in the query string
         ema = _s.getEma() 
         logging.debug('################################### forgot post ema= %s',ema)
         _s.serve ('forgot.html', email=ema)
