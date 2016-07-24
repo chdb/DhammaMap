@@ -20,7 +20,7 @@ import utils as u
 import models as m
 from jinja_boot import Jinja
 import json
-import math
+#import math
 #from widget import W
 #import utils
 #import httplib as http
@@ -126,10 +126,15 @@ class RateLimiter (object):
                 if nBad:
                     #logging.debug('extra = %d for %d bad %s logins', cf.delayFn(nBad), nBad, cf.name)
                     _s.delay += cf.delayFn(nBad)
-            d = _s.delay*100.0              # convert from int-deciseconds to float-milliseconds 
-            # Now divide d into a series of equal waits so each wait is the max that is less than MemCacheKeepAlive
-            _s.wait = int(d/math.ceil(d/u.config('MemCacheKeepAlive'))) # .. and convert to int-millisecs
-            logging.debug('delay = %d ms, wait = %d ms',_s.delay * 100, _s.wait)
+            d = _s.delay*100.0                  # Convert from int-deciseconds to float-milliseconds 
+            mcka = u.config('MemCacheKeepAlive')# Divide d into a series of equal waits so each wait is the max that is less than MemCacheKeepAlive
+            n = -(-d//mcka) # number of waits. NB -(-a//b) rounds up and is equivalent to math.ceil (a/b)
+            _s.wait = int(-(-d//n)) # .. round up to int-millisecs
+            
+            logging.debug('delay = %d ms, n = %d, wait = %d ms, total = %d', d, n, _s.wait, _s.wait*n)
+            assert _s.wait <= mcka
+            assert n     * _s.wait >= d
+            assert (n-1) * _s.wait <= d
         
         def _initMonitors (ema, ipa, hlr):
         

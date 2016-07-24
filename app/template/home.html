@@ -4,15 +4,69 @@
 <h1>Dhamma Map</h1>
 <p>Skeleton implementation for Dhamma Map.</p>
 
-<p>You will have to take care of the following items:</p>
+<p>todo:</p>
 <ol>
-    <li>
-        Send email verification and password recovery messages via email
-    </li>
-    <li><a href="https://developers.google.com/appengine/docs/python/config/appconfig#Secure_URLs">
-        Configure</a> login and password reset urls to use https
-        (you will have to deploy your app to test this)
-    </li>
+   <li> Send email verification and password recovery messages via email
+   </li>
+	<li> Improve Rate-limit code for	brute force attacks
+		<ul>
+			<li>Improve the KeepAlive code. Implement a simple monitor of the minimum memCache lifetime. Identify unexpected request timing esp too early (http:419). 
+			</li>
+			<li>Currently we only save minimal data but consider saving the RateLimit object so it does not have to be reconstructed at everty request.
+			</li>
+			<li>Use a cookie-id (not IPA) to identify user. 
+			<br>Cookie-id is installed at first access of site from a given browser with a small delay before logon, 
+			which users will experiance whenever they use a new device or browser. 
+			</li>
+			<li>The same same cookie can have data to back-up memcache ratelimit <em>expiry</em> and <em>nbad</em>, proected by a HMAC. Inconsistency indicates cookie tampering ie Replay Attack.
+			</li>
+			<li>If no cookie found then it might have been deleted so check for same IPA as before, check for replay attack as above etc   
+			</li>
+			<li>Monitor for repeated use of same wrong password with different account names - but only log, dont lock on this.  
+			</li>
+			<li>Monitor bad-logon rate and general-logon rate to detect Clever Distributed Attacks CDA which means one that contrives a sequence of login attempts with 
+				<ul>
+					<li>different usernames
+					</li>
+					<li>different or no Cookie-ids
+					</li>
+					<li>different IPAs 
+					</li>
+					<li>different passwords 
+					</li>
+				</ul>
+				when we detect such a CDA, we implement a global slow-down.
+				<br>To detect a CDA, save the following Moving Mean (MM) & Moving Mean Variance (MMV) in both memcache and app.registry (?? ie per instance):-
+				<ul>
+					<li>MM & MMV of general logon r-rate (good, bad and abandoned) 
+					</li>
+					<li>MM & MMV of bad logon r-rate 
+					</li>
+					(we use reciprocal rate for convenience - number of millisecs since last logon request.  )
+				</ul>
+				Exponential Moving Mean is calculated from:-
+				<br>&emsp;<strong> mm(0) = V0</strong>  (initial value)
+				<br>&emsp;<strong> mm(n) = (α * Vn) + ((1-α) * mm(n-1)) </strong> 
+				<br> mm is either MM or MMV
+				<br> α is the weighting coefficient (configurable), 0 &lt; α &lt; 1 : a higher value of α discounts older observations faster.
+			</li>
+			<li> CDA is detected iff: both the general and the bad logon r-rate show a significant decrease as follows
+			<br>&emsp;<strong> MM(n-1) - Vn &lt; ß * MMV(n-1) </strong> 
+			<br> ß is the variance factor (configurable) -- if its a normal distribution then:- 
+			<ul>
+				<li>68% of values are within V ie: &emsp; ß = 1
+				</li>
+				<li>95% of values within 2 * V ie: &emsp; ß = 2
+				</li>
+				<li>99.7% of values within 3*V ie: &emsp; ß = 3
+				</li>
+			</ul>
+		</ul>
+   </li>
+   <li><a href="https://developers.google.com/appengine/docs/python/config/appconfig#Secure_URLs">
+      Configure</a> login and password reset urls to use https
+      (you will have to deploy your app to test this)
+   </li>
 </ol>
 
 <p>Try it out by registering <a href="/signup">here</a>.

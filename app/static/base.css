@@ -1,31 +1,32 @@
 input 	{ 	display : block; 	
-		}
-ul 		{	margin  : 0px; 	
-		}
-#flashes{ 	/*margin  : 20px;*/
-			/*border  : 1px solid transparent;   stops jerks in $.slideUp() and $.slideDown() */
-			background-color : pink;	
-			/*display: none;*/
-		}
-#formdiv{ 	border  : 1px solid blue;
-			padding : 0 20px 20px 20px;
-		}
-.i      {   display: inline !important;
-        }
-label   {   display: block;
-        }
+			}
+li			{	padding-bottom : 5px;
+				padding-top  	: 5px; 	
+			}
+#flashes	{ 	/*margin  : 20px;*/
+				/*border  : 1px solid transparent;   stops jerks in $.slideUp() and $.slideDown() */
+				background-color : pink;	
+				/*display: none;*/
+			}
+#formdiv	{ 	border  : 1px solid blue;
+				padding : 0 20px 20px 20px;
+			}
+.i    	{  display: inline !important;
+			}
+label 	{  display: block;
+			}
 
-/*  Hack for form with multiple submit buttons, to set the default action to '\login' or whatever. 
+/* Hack for form with multiple submit buttons, to set the default action to '\login' or whatever. 
 	Otherwise, when user submits by clicking return key while in a form-input,
 	most browsers will use the action from whatever button is next or nearest to the form-input. 	
 	We add another submit button but set it non visible ( {display:none} wont work) */
-.defaultAction	{ 	overflow: visible !important; 
-					height	: 0 	!important; 
-					width	: 0 	!important; 
-					margin	: 0 	!important; 
-					border	: 0 	!important; 
-					padding	: 0 	!important; 
-					/*display	: block !important;*/
-				}
+.defaultAction	{ 	overflow	:visible !important; 
+						height	: 0 		!important; 
+						width		: 0 		!important; 
+						margin	: 0 		!important; 
+						border	: 0 		!important; 
+						padding	: 0 		!important; 
+						/*display	: block !important;*/
+					}
 /* {% block mediaCSS %} */
 /* {% endblock %} */
